@@ -1,0 +1,693 @@
+/* ==========================================================================
+   JANTA SHREE - ENTERPRISE INVENTORY & ACCOUNTING SYSTEM
+   ========================================================================== */
+
+:root {
+  --js-brand-dark: #0f172a;
+  --js-brand-nav: #1e293b;
+  --js-brand-hover: #334155;
+  --js-primary: #047857;
+  --js-primary-hover: #065f46;
+  --js-accent: #10b981;
+  --js-bg: #f8fafc;
+  --js-surface: #ffffff;
+  --js-border: #e2e8f0;
+  --js-border-subtle: #f1f5f9;
+  --js-text-main: #0f172a;
+  --js-text-muted: #64748b;
+  --js-danger: #dc2626;
+  --js-danger-hover: #b91c1c;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--js-text-main);
+  background-color: var(--js-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --------------------------------------------------------------------------
+   App Shell & Navigation
+   -------------------------------------------------------------------------- */
+.layout {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+.sidebar {
+  width: 250px;
+  background-color: var(--js-brand-nav);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-right: 1px solid #0f172a;
+}
+
+.brand {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  padding: 22px 20px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-transform: uppercase;
+  color: #ffffff;
+}
+
+.branch-select-box {
+  padding: 14px 20px;
+  background-color: var(--js-brand-dark);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.branch-select-box label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #94a3b8;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.branch-select-box select {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 4px;
+  border: 1px solid #475569;
+  background-color: #ffffff;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+}
+
+.nav-links {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 0;
+  flex-grow: 1;
+}
+
+.nav-links a {
+  display: flex;
+  align-items: center;
+  padding: 11px 20px;
+  color: #cbd5e1;
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: all 0.15s ease-in-out;
+  border-left: 3px solid transparent;
+}
+
+.nav-links a:hover {
+  background-color: var(--js-brand-hover);
+  color: #ffffff;
+}
+
+.nav-links a.active {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  border-left-color: var(--js-accent);
+  font-weight: 600;
+}
+
+.sidebar-footer {
+  padding: 16px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.logout-btn {
+  width: 100%;
+  background-color: transparent;
+  color: #cbd5e1;
+  border: 1px solid #475569;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.logout-btn:hover {
+  background-color: var(--js-danger);
+  border-color: var(--js-danger);
+  color: #ffffff;
+}
+
+/* --------------------------------------------------------------------------
+   Main Workspace
+   -------------------------------------------------------------------------- */
+.content {
+  flex-grow: 1;
+  background-color: var(--js-bg);
+  overflow-y: auto;
+}
+
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 28px 32px;
+}
+
+h1 {
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--js-text-main);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* --------------------------------------------------------------------------
+   Metric Cards
+   -------------------------------------------------------------------------- */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.card {
+  background: var(--js-surface);
+  border: 1px solid var(--js-border);
+  border-radius: 6px;
+  padding: 18px 20px;
+  position: relative;
+  border-top: 3px solid #3b82f6;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.card.card-blue {
+  border-top-color: var(--js-primary);
+}
+
+.card-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--js-text-muted);
+  margin-bottom: 6px;
+}
+
+.card-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--js-text-main);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   Forms & Inputs
+   -------------------------------------------------------------------------- */
+.form-box {
+  background: var(--js-surface);
+  border: 1px solid var(--js-border);
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  align-items: center;
+}
+
+.form-row input,
+.form-row select {
+  height: 38px;
+  padding: 6px 12px;
+  font-size: 13.5px;
+  color: var(--js-text-main);
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  flex: 1 1 160px;
+}
+
+.form-row input:focus,
+.form-row select:focus {
+  border-color: var(--js-primary);
+  box-shadow: 0 0 0 3px rgba(4, 120, 87, 0.15);
+}
+
+.form-row input::placeholder {
+  color: #94a3b8;
+}
+
+/* Action Buttons */
+button,
+.save-btn {
+  height: 38px;
+  padding: 0 18px;
+  background-color: var(--js-primary);
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease;
+  white-space: nowrap;
+}
+
+button:hover:not(:disabled),
+.save-btn:hover:not(:disabled) {
+  background-color: var(--js-primary-hover);
+}
+
+button:disabled,
+.save-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.delete-btn {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  background-color: transparent;
+  color: var(--js-danger);
+  border: 1px solid rgba(220, 38, 38, 0.35);
+}
+
+.delete-btn:hover:not(:disabled) {
+  background-color: var(--js-danger);
+  color: #ffffff;
+  border-color: var(--js-danger);
+}
+
+.btn-secondary {
+  background-color: #f1f5f9 !important;
+  color: #475569 !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: #e2e8f0 !important;
+}
+
+/* --------------------------------------------------------------------------
+   Data Tables (Strict Uniform Alignment)
+   -------------------------------------------------------------------------- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--js-surface);
+  border: 1px solid var(--js-border);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+thead {
+  background-color: #f8fafc;
+  border-bottom: 1px solid var(--js-border);
+}
+
+th,
+td {
+  padding: 12px 16px;
+  font-size: 13px;
+  vertical-align: middle;
+  text-align: left;
+}
+
+th {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #475569;
+  border-bottom: 1px solid var(--js-border);
+  white-space: nowrap;
+}
+
+td {
+  color: var(--js-text-main);
+  border-bottom: 1px solid var(--js-border-subtle);
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+tbody tr:hover {
+  background-color: #f8fafc;
+}
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 3px;
+  background-color: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+/* Summary Row */
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--js-surface);
+  border: 1px solid var(--js-border);
+  border-radius: 6px;
+  padding: 14px 20px;
+  margin-top: 14px;
+  margin-bottom: 20px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--js-text-main);
+}
+
+/* --------------------------------------------------------------------------
+   Invoice / Print Receipt Modal
+   -------------------------------------------------------------------------- */
+.invoice-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.invoice-modal {
+  background-color: #ffffff;
+  padding: 24px;
+  border-radius: 8px;
+  width: 440px;
+  max-width: 92vw;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.2);
+}
+
+.invoice-paper {
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.invoice-header {
+  text-align: center;
+  border-bottom: 1px dashed #cbd5e1;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.invoice-header h2 {
+  font-size: 19px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 2px;
+}
+
+.invoice-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 12px;
+}
+
+.invoice-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+  border: none;
+  box-shadow: none;
+}
+
+.invoice-table th,
+.invoice-table td {
+  padding: 6px 4px;
+  font-size: 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.invoice-table th {
+  background: transparent;
+  color: #475569;
+  border-bottom: 1px dashed #cbd5e1;
+}
+
+.invoice-total-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 15px;
+  font-weight: 700;
+  border-top: 1px dashed #cbd5e1;
+  border-bottom: 1px dashed #cbd5e1;
+  padding: 10px 0;
+  margin: 12px 0;
+}
+
+.invoice-footer {
+  text-align: center;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 10px;
+}
+
+.invoice-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.invoice-actions button {
+  flex: 1;
+}
+
+/* --------------------------------------------------------------------------
+   Print Cleanliness
+   -------------------------------------------------------------------------- */
+@media print {
+  @page {
+    margin: 10mm; /* Removes browser header/footer text like URL and title */
+    size: auto;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .invoice-paper,
+  .invoice-paper * {
+    visibility: visible;
+  }
+
+  .invoice-modal-overlay {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: auto;
+    background: none;
+    display: block;
+  }
+
+  .invoice-modal {
+    box-shadow: none;
+    padding: 0;
+    width: 100%;
+    border-radius: 0;
+  }
+
+  .invoice-actions {
+    display: none !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Minimalist Enterprise Login Screen (Full Screen & Centered)
+   -------------------------------------------------------------------------- */
+.login-screen-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #0f172a 0%, #1e293b 50%, #064e3b 100%);
+  z-index: 99999;
+  overflow: hidden;
+}
+
+.login-container {
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+  padding: 40px 32px;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+}
+
+.login-avatar-icon {
+  display: flex;
+  justify-content: center;
+  color: #10b981;
+  margin-bottom: 12px;
+}
+
+.login-title {
+  color: #f8fafc;
+  font-size: 22px;
+  font-weight: 300;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 34px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.login-error-alert {
+  background-color: rgba(220, 38, 38, 0.15);
+  color: #fca5a5;
+  border: 1px solid rgba(220, 38, 38, 0.4);
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.login-input-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1.5px solid rgba(255, 255, 255, 0.3);
+  padding-bottom: 6px;
+  transition: border-color 0.2s ease;
+}
+
+.login-input-row:focus-within {
+  border-bottom-color: #10b981;
+}
+
+.login-field-icon {
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  padding-right: 12px;
+}
+
+.login-input-row input {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #ffffff !important;
+  font-size: 14px;
+  width: 100%;
+  outline: none;
+  padding: 6px 0;
+}
+
+.login-input-row input::placeholder {
+  color: #64748b;
+  font-weight: 400;
+}
+
+.login-options-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: -4px;
+}
+
+.login-remember {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.login-remember input[type="checkbox"] {
+  accent-color: #047857;
+  cursor: pointer;
+}
+
+.login-note {
+  color: #64748b;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.login-submit-btn {
+  margin-top: 10px;
+  height: 44px;
+  background-color: #047857;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.login-submit-btn:hover:not(:disabled) {
+  background-color: #059669;
+}
+
+.login-submit-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
