@@ -12,6 +12,7 @@ function Sales() {
   const [paymentType, setPaymentType] = useState('Cash');
   const [selectedItem, setSelectedItem] = useState('');
   const [quantity, setQuantity] = useState('');
+  const [customRate, setCustomRate] = useState(''); // Editable manual price
   const [gstRate, setGstRate] = useState(18); // Default 18% GST
   const [billLines, setBillLines] = useState([]);
   const [allSalesHistory, setAllSalesHistory] = useState([]);
@@ -55,8 +56,10 @@ function Sales() {
     setItems(data || []);
     if (data && data.length > 0) {
       setSelectedItem(data[0].name);
+      setCustomRate(data[0].rate != null ? data[0].rate : '');
     } else {
       setSelectedItem('');
+      setCustomRate('');
     }
   }
 
@@ -70,12 +73,29 @@ function Sales() {
     setAllSalesHistory(data || []);
   }
 
+  function handleItemSelect(name) {
+    setSelectedItem(name);
+    const item = items.find((i) => i.name === name);
+    if (item && item.rate != null) {
+      setCustomRate(item.rate);
+    }
+  }
+
   function handleAddLine() {
     const item = items.find((i) => i.name === selectedItem);
     if (!item || !quantity) return;
 
     const qty = Number(quantity);
-    if (qty <= 0) return;
+    if (qty <= 0) {
+      alert('Please enter a valid quantity.');
+      return;
+    }
+
+    const rate = Number(customRate);
+    if (isNaN(rate) || rate < 0) {
+      alert('Please enter a valid rate/price.');
+      return;
+    }
 
     const alreadyInBill = billLines
       .filter((line) => line.name === item.name)
@@ -86,7 +106,6 @@ function Sales() {
       return;
     }
 
-    const rate = Number(item.rate);
     const taxableAmount = qty * rate;
     const taxAmount = (taxableAmount * gstRate) / 100;
     const lineTotal = taxableAmount + taxAmount;
@@ -107,6 +126,25 @@ function Sales() {
     ]);
 
     setQuantity('');
+  }
+
+  function handleUpdateLineRate(index, newRate) {
+    const rate = Number(newRate) || 0;
+    setBillLines((prev) =>
+      prev.map((line, i) => {
+        if (i !== index) return line;
+        const taxableAmount = line.qty * rate;
+        const taxAmount = (taxableAmount * (line.gstRate || 0)) / 100;
+        return {
+          ...line,
+          rate: rate,
+          taxableAmount: taxableAmount,
+          cgst: taxAmount / 2,
+          sgst: taxAmount / 2,
+          amount: taxableAmount + taxAmount
+        };
+      })
+    );
   }
 
   function handleRemoveLine(index) {
@@ -297,7 +335,7 @@ function Sales() {
       </div>
 
       <div className="form-row">
-        <select value={selectedItem} onChange={(e) => setSelectedItem(e.target.value)}>
+        <select value={selectedItem} onChange={(e) => handleItemSelect(e.target.value)}>
           {items.map((item) => (
             <option key={item.id} value={item.name}>
               {item.name} ({item.stock} {item.unit} left)
@@ -310,6 +348,14 @@ function Sales() {
           placeholder="Qty"
           value={quantity}
           onChange={(e) => setQuantity(e.target.value)}
+        />
+        <input
+          type="number"
+          step="any"
+          placeholder="Rate / Price (₹)"
+          title="Manual Selling Price per unit"
+          value={customRate}
+          onChange={(e) => setCustomRate(e.target.value)}
         />
         <select value={gstRate} onChange={(e) => setGstRate(Number(e.target.value))}>
           <option value={0}>0% GST</option>
@@ -340,7 +386,21 @@ function Sales() {
             <tr key={index}>
               <td>{line.name}</td>
               <td>{line.qty} {line.unit}</td>
-              <td>₹{line.rate}</td>
+              <td>
+                <input
+                  type="number"
+                  step="any"
+                  value={line.rate}
+                  onChange={(e) => handleUpdateLineRate(index, e.target.value)}
+                  style={{
+                    width: '80px',
+                    padding: '4px 6px',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '4px',
+                    fontSize: '13px'
+                  }}
+                />
+              </td>
               <td>{line.gstRate}%</td>
               <td>₹{(line.cgst + line.sgst).toFixed(2)}</td>
               <td>₹{line.amount.toFixed(2)}</td>
