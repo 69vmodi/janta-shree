@@ -6,7 +6,7 @@ import { BranchContext } from './BranchContext';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Items from './pages/Items';
-import StockTransfer from './pages/StockTransfer';
+import Transfers from './pages/Transfers';
 import Purchases from './pages/Purchases';
 import Sales from './pages/Sales';
 import Invoices from './pages/Invoices';
@@ -55,7 +55,7 @@ function App() {
   }
 
   return (
-    <BranchContext.Provider value={selectedBranch}>
+    <BranchContext.Provider value={{ selectedBranch, changeBranch: handleBranchChange }}>
       <div className="layout">
         <Sidebar onBranchSelect={handleBranchChange} currentBranch={selectedBranch} />
         <main className="content">
@@ -63,7 +63,7 @@ function App() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/items" element={<Items />} />
-            <Route path="/transfers" element={<StockTransfer />} />
+            <Route path="/transfers" element={<Transfers />} />
             <Route path="/purchases" element={<Purchases />} />
             <Route path="/sales" element={<Sales />} />
             <Route path="/invoices" element={<Invoices />} />
