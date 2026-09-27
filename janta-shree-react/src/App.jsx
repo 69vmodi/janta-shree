@@ -1,119 +1,78 @@
-import Invoices from './pages/Invoices';
-import Transfers from './pages/Transfers';
 import { useState, useEffect } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import { BranchContext } from './BranchContext';
+
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Items from './pages/Items';
+import StockTransfer from './pages/StockTransfer';
 import Purchases from './pages/Purchases';
 import Sales from './pages/Sales';
+import Invoices from './pages/Invoices';
 import Parties from './pages/Parties';
 import CashBank from './pages/CashBank';
 import Reports from './pages/Reports';
 import Login from './pages/Login';
-import './App.css';
 
 function App() {
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [branches, setBranches] = useState([]);
-  const [selectedBranch, setSelectedBranch] = useState(null);
+  const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Read immediately from localStorage
+  const [selectedBranch, setSelectedBranch] = useState(() => {
+    return localStorage.getItem('janta_selected_branch') || 'ALL';
+  });
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user || null);
-      if (session?.user) {
-        loadProfile(session.user.id);
-      } else {
-        setLoading(false);
-      }
+      setSession(session);
+      setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
-      if (session?.user) {
-        loadProfile(session.user.id);
-      } else {
-        setProfile(null);
-        setSelectedBranch(null);
-        setLoading(false);
-      }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
     });
 
-    return () => listener.subscription.unsubscribe();
+    return () => subscription.unsubscribe();
   }, []);
 
-  async function loadProfile(userId) {
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
-
-    const { data: branchesData } = await supabase
-      .from('branches')
-      .select('*')
-      .order('name');
-
-    setProfile(profileData);
-    setBranches(branchesData || []);
-
-    if (profileData?.role === 'staff') {
-      // Locked strictly to staff's assigned branch
-      setSelectedBranch(profileData.branch_id);
-    } else {
-      // Owner starts with the first branch
-      setSelectedBranch(branchesData?.[0]?.id || null);
-    }
-
-    setLoading(false);
-  }
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    setUser(null);
-    setProfile(null);
-    setSelectedBranch(null);
-  }
+  const handleBranchChange = (branchId) => {
+    setSelectedBranch(branchId);
+    localStorage.setItem('janta_selected_branch', branchId);
+  };
 
   if (loading) {
     return (
-      <div style={{ padding: '40px', textAlign: 'center', fontFamily: 'Arial, sans-serif' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#0f172a', color: '#fff' }}>
         Loading Janta Shree...
       </div>
     );
   }
 
-  if (!user) {
-    return <Login onLogin={setUser} />;
+  if (!session) {
+    return <Login onLoginSuccess={() => setLoading(false)} />;
   }
 
   return (
     <BranchContext.Provider value={selectedBranch}>
       <div className="layout">
-        <Sidebar
-          onLogout={handleLogout}
-          profile={profile}
-          branches={branches}
-          selectedBranch={selectedBranch}
-          onBranchChange={setSelectedBranch}
-        />
-        <div className="content">
+        <Sidebar onBranchSelect={handleBranchChange} currentBranch={selectedBranch} />
+        <main className="content">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/items" element={<Items />} />
+            <Route path="/transfers" element={<StockTransfer />} />
             <Route path="/purchases" element={<Purchases />} />
             <Route path="/sales" element={<Sales />} />
-            <Route path="/parties" element={<Parties />} />
-            <Route path="/cashbank" element={<CashBank />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/transfers" element={<Transfers />} />
             <Route path="/invoices" element={<Invoices />} />
+            <Route path="/parties" element={<Parties />} />
+            <Route path="/cash-bank" element={<CashBank />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
-        </div>
+        </main>
       </div>
     </BranchContext.Provider>
   );

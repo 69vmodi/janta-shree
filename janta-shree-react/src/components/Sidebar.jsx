@@ -1,60 +1,63 @@
-import { Link, useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
 
-function Sidebar({ onLogout, profile, branches, selectedBranch, onBranchChange }) {
-  const location = useLocation();
-  const isOwner = profile?.role === 'owner';
+function Sidebar({ onBranchSelect, currentBranch }) {
+  const [branches, setBranches] = useState([]);
+  const navigate = useNavigate();
 
-  const navItems = [
-    { path: '/', label: 'Dashboard' },
-    { path: '/items', label: 'Items & Stock' },
-    { path: '/transfers', label: 'Stock Transfer' },
-    { path: '/purchases', label: 'Purchases' },
-    { path: '/sales', label: 'Sales / Billing' },
-    { path: '/invoices', label: 'Invoices / Bills' },
-    { path: '/parties', label: 'Parties' },
-    { path: '/cashbank', label: 'Cash & Bank' },
-    { path: '/reports', label: 'Reports' },
-  ];
+  useEffect(() => {
+    async function loadBranches() {
+      const { data, error } = await supabase.from('branches').select('*').order('name');
+      if (!error && data) {
+        setBranches(data);
+      }
+    }
+    loadBranches();
+  }, []);
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    navigate('/');
+  }
 
   return (
-    <div className="sidebar">
-      <div className="brand">Janta Shree</div>
+    <aside className="sidebar">
+      <div className="brand">JANTA SHREE</div>
 
-      {isOwner && branches && branches.length > 0 && (
-        <div className="branch-select-box">
-          <label>Branch View</label>
-          <select
-            value={selectedBranch || ''}
-            onChange={(e) => onBranchChange(e.target.value)}
-          >
-            <option value="ALL">🏢 All Branches (Combined)</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                📍 {b.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+      <div className="branch-select-box">
+        <label>BRANCH VIEW</label>
+        <select
+          value={currentBranch || 'ALL'}
+          onChange={(e) => onBranchSelect(e.target.value)}
+        >
+          <option value="ALL">🏢 All Branches (Overview)</option>
+          {branches.map((b) => (
+            <option key={b.id} value={b.id}>
+              📍 {b.name}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <nav className="nav-links">
-        {navItems.map((item) => (
-          <Link
-            key={item.path}
-            to={item.path}
-            className={location.pathname === item.path ? 'active' : ''}
-          >
-            {item.label}
-          </Link>
-        ))}
+        <NavLink to="/dashboard">Dashboard</NavLink>
+        <NavLink to="/items">Items & Stock</NavLink>
+        <NavLink to="/transfers">Stock Transfer</NavLink>
+        <NavLink to="/purchases">Purchases</NavLink>
+        <NavLink to="/sales">Sales / Billing</NavLink>
+        <NavLink to="/invoices">Invoices / Bills</NavLink>
+        <NavLink to="/parties">Parties</NavLink>
+        <NavLink to="/cash-bank">Cash & Bank</NavLink>
+        <NavLink to="/reports">Reports</NavLink>
       </nav>
 
       <div className="sidebar-footer">
-        <button className="logout-btn" onClick={onLogout}>
+        <button className="logout-btn" onClick={handleLogout}>
           Logout
         </button>
       </div>
-    </div>
+    </aside>
   );
 }
 
