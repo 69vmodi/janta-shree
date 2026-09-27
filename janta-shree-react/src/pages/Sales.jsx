@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient';
 import { BranchContext } from '../BranchContext';
 
 function Sales() {
-  const selectedBranch = useContext(BranchContext);
+  const { selectedBranch } = useContext(BranchContext);
 
   const [branchInfo, setBranchInfo] = useState(null);
   const [items, setItems] = useState([]);
@@ -14,7 +14,7 @@ function Sales() {
   const [quantity, setQuantity] = useState('');
   const [customRate, setCustomRate] = useState('');
   const [gstRate, setGstRate] = useState(0);
-  const [freight, setFreight] = useState(''); // Freight / Transport
+  const [freight, setFreight] = useState(''); // Freight option
   const [billLines, setBillLines] = useState([]);
   const [allSalesHistory, setAllSalesHistory] = useState([]);
   const [activeInvoice, setActiveInvoice] = useState(null);
@@ -50,18 +50,15 @@ function Sales() {
       .eq('branch_id', selectedBranch)
       .order('created_at');
 
-    if (error) {
-      console.error(error);
-      return;
-    }
-
-    setItems(data || []);
-    if (data && data.length > 0) {
-      setSelectedItem(data[0].name);
-      setCustomRate(data[0].rate != null ? data[0].rate : '');
-    } else {
-      setSelectedItem('');
-      setCustomRate('');
+    if (!error && data) {
+      setItems(data);
+      if (data.length > 0) {
+        setSelectedItem(data[0].name);
+        setCustomRate(data[0].rate != null ? data[0].rate : '');
+      } else {
+        setSelectedItem('');
+        setCustomRate('');
+      }
     }
   }
 
@@ -88,16 +85,10 @@ function Sales() {
     if (!item || !quantity) return;
 
     const qty = Number(quantity);
-    if (qty <= 0) {
-      alert('Please enter a valid quantity.');
-      return;
-    }
+    if (qty <= 0) return alert('Please enter a valid quantity.');
 
     const rate = Number(customRate);
-    if (isNaN(rate) || rate < 0) {
-      alert('Please enter a valid rate/price.');
-      return;
-    }
+    if (isNaN(rate) || rate < 0) return alert('Please enter a valid rate.');
 
     const alreadyInBill = billLines
       .filter((line) => line.name === item.name)
@@ -159,39 +150,25 @@ function Sales() {
   const freightAmount = Number(freight) || 0;
   const grandTotal = Math.round(billLines.reduce((sum, l) => sum + l.amount, 0) + freightAmount);
 
-  // Generate Sequential Invoice Number (e.g. JS-0001, JS-0002)
-  async function generateSequentialBillNo() {
-    try {
-      const { count, error } = await supabase
-        .from('sales')
-        .select('*', { count: 'exact', head: true });
+  async function getNextSequentialBillNumber() {
+    const { count, error } = await supabase
+      .from('sales')
+      .select('*', { count: 'exact', head: true });
 
-      if (error) throw error;
-      const nextNo = (count || 0) + 1;
-      return `JS-${String(nextNo).padStart(4, '0')}`;
-    } catch {
-      return `JS-${Date.now().toString().slice(-4)}`;
-    }
+    const nextCount = (error || count == null ? 0 : count) + 1;
+    return `JS-${String(nextCount).padStart(4, '0')}`;
   }
 
   async function handleSaveSale() {
-    if (!customerName.trim()) {
-      alert('Please enter a customer name.');
-      return;
-    }
-
-    if (!selectedBranch || isAllBranches) {
-      alert('Please select a specific branch (Jobat or Alirajpur) from the sidebar to make a sale.');
-      return;
-    }
+    if (!customerName.trim()) return alert('Please enter customer name.');
+    if (!selectedBranch || isAllBranches) return alert('Select a specific branch (Jobat or Alirajpur) from the sidebar.');
 
     setIsSaving(true);
 
     try {
-      // 1. Get next sequence bill number
-      const seqBillNo = await generateSequentialBillNo();
+      const nextInvoiceNo = await getNextSequentialBillNumber();
 
-      // 2. Deduct items stock
+      // Deduct stock
       for (const item of items) {
         const totalSold = billLines
           .filter((l) => l.name === item.name)
@@ -199,76 +176,65 @@ function Sales() {
 
         if (totalSold === 0) continue;
 
-        const { error: stockErr } = await supabase
+        await supabase
           .from('items')
           .update({ stock: Number(item.stock) - totalSold })
           .eq('id', item.id);
-
-        if (stockErr) console.warn('Stock update notice:', stockErr.message);
       }
 
-      // 3. Insert Sale into database
-      const salePayload = {
-        customer: customerName.trim(),
-        customer_phone: customerPhone.trim() || null,
-        payment_type: paymentType,
-        lines: billLines,
-        freight_charge: freightAmount,
-        invoice_no: seqBillNo,
-        total: grandTotal,
-        branch_id: selectedBranch
-      };
-
+      // Save sale
       const { data: saleData, error: saleError } = await supabase
         .from('sales')
-        .insert([salePayload])
+        .insert([
+          {
+            invoice_no: nextInvoiceNo,
+            customer: customerName.trim(),
+            customer_phone: customerPhone.trim() || null,
+            payment_type: paymentType,
+            lines: billLines,
+            freight_charge: freightAmount,
+            total: grandTotal,
+            branch_id: selectedBranch
+          }
+        ])
         .select()
         .single();
 
-      if (saleError) {
-        throw new Error(saleError.message);
-      }
+      if (saleError) throw new Error(saleError.message);
 
-      // 4. Update Parties Ledger if Credit sale
-      if (paymentType === 'Credit') {
-        const cleanPhone = customerPhone ? customerPhone.trim().replace(/\D/g, '') : null;
+      // Save party record
+      const { data: existingParty } = await supabase
+        .from('parties')
+        .select('*')
+        .eq('name', customerName.trim())
+        .eq('branch_id', selectedBranch)
+        .maybeSingle();
 
-        const { data: existingParty } = await supabase
+      const balanceDelta = paymentType === 'Credit' ? grandTotal : 0;
+
+      if (existingParty) {
+        await supabase
           .from('parties')
-          .select('*')
-          .eq('name', customerName.trim())
-          .eq('type', 'customer')
-          .eq('branch_id', selectedBranch)
-          .maybeSingle();
-
-        if (existingParty) {
-          const { error: partyUpdateErr } = await supabase
-            .from('parties')
-            .update({
-              balance: Number(existingParty.balance || 0) + grandTotal,
-              phone: cleanPhone || existingParty.phone
-            })
-            .eq('id', existingParty.id);
-
-          if (partyUpdateErr) console.error('Party update error:', partyUpdateErr);
-        } else {
-          const { error: partyInsertErr } = await supabase.from('parties').insert([
-            {
-              name: customerName.trim(),
-              phone: cleanPhone,
-              type: 'customer',
-              balance: grandTotal,
-              branch_id: selectedBranch
-            }
-          ]);
-
-          if (partyInsertErr) console.error('Party insert error:', partyInsertErr);
-        }
+          .update({
+            balance: Number(existingParty.balance || 0) + balanceDelta,
+            phone: customerPhone.trim() || existingParty.phone
+          })
+          .eq('id', existingParty.id);
+      } else {
+        await supabase.from('parties').insert([
+          {
+            name: customerName.trim(),
+            phone: customerPhone.trim() || null,
+            type: 'customer',
+            balance: balanceDelta,
+            balance_type: 'Dr',
+            branch_id: selectedBranch
+          }
+        ]);
       }
 
-      // 5. Open invoice modal with verified database details
       setActiveInvoice({
-        id: seqBillNo,
+        id: nextInvoiceNo,
         date: new Date().toLocaleDateString('en-GB'),
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         branchName: branchInfo?.name || 'Janta Shree',
@@ -286,15 +252,14 @@ function Sales() {
         total: grandTotal
       });
 
-      // Clear input form
       setBillLines([]);
       setCustomerName('');
       setCustomerPhone('');
       setFreight('');
       fetchItems();
     } catch (err) {
-      console.error('Save Sale Failed:', err);
-      alert('Failed to save bill to Supabase: ' + err.message + '\n\nMake sure RLS is disabled or permission is granted in Supabase.');
+      console.error(err);
+      alert('Save failed: ' + err.message);
     } finally {
       setIsSaving(false);
     }
@@ -304,32 +269,18 @@ function Sales() {
     window.print();
   }
 
-  function handleCloseInvoice() {
-    setActiveInvoice(null);
-  }
-
   if (isAllBranches) {
     return (
       <div className="page">
         <h1>Sales & Billing (Consolidated View)</h1>
-        <div style={{
-          backgroundColor: '#fff3cd',
-          color: '#856404',
-          padding: '16px',
-          borderRadius: '6px',
-          marginBottom: '24px',
-          border: '1px solid #ffeeba'
-        }}>
-          <strong>Notice:</strong> To create a new bill, select a specific branch (Jobat or Alirajpur) from the sidebar dropdown.
+        <div style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '16px', borderRadius: '6px', marginBottom: '24px' }}>
+          Please select a specific branch from the sidebar to create new bills.
         </div>
-
-        <h1 style={{ fontSize: '16px' }}>Recent Company-Wide Sales</h1>
         <table>
           <thead>
             <tr>
               <th>Invoice No</th>
               <th>Date</th>
-              <th>Branch</th>
               <th>Customer</th>
               <th>Payment</th>
               <th>Total (₹)</th>
@@ -338,21 +289,13 @@ function Sales() {
           <tbody>
             {allSalesHistory.map((s) => (
               <tr key={s.id}>
-                <td><strong>{s.invoice_no || `JS-${s.id.slice(0, 6)}`}</strong></td>
+                <td><strong>{s.invoice_no || `JS-${s.id.slice(0, 5)}`}</strong></td>
                 <td>{new Date(s.created_at).toLocaleDateString('en-GB')}</td>
-                <td>{s.branch?.name || '-'}</td>
                 <td>{s.customer}</td>
                 <td><span className="badge">{s.payment_type}</span></td>
                 <td>₹{s.total}</td>
               </tr>
             ))}
-            {allSalesHistory.length === 0 && (
-              <tr>
-                <td colSpan="6" style={{ textAlign: 'center', color: '#888', padding: '16px' }}>
-                  No sales recorded yet.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
@@ -372,7 +315,7 @@ function Sales() {
         />
         <input
           type="text"
-          placeholder="Customer Phone (WhatsApp/SMS)"
+          placeholder="Customer Phone"
           value={customerPhone}
           onChange={(e) => setCustomerPhone(e.target.value)}
         />
@@ -389,7 +332,7 @@ function Sales() {
               {item.name} ({item.stock} {item.unit} left)
             </option>
           ))}
-          {items.length === 0 && <option value="">No items in this branch</option>}
+          {items.length === 0 && <option value="">No items available</option>}
         </select>
         <input
           type="number"
@@ -401,7 +344,6 @@ function Sales() {
           type="number"
           step="any"
           placeholder="Rate (₹)"
-          title="Unit selling rate"
           value={customRate}
           onChange={(e) => setCustomRate(e.target.value)}
         />
@@ -426,7 +368,7 @@ function Sales() {
             <th>GST %</th>
             <th>Tax (₹)</th>
             <th>Total (₹)</th>
-            <th style={{ width: '80px' }}></th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -440,22 +382,14 @@ function Sales() {
                   step="any"
                   value={line.rate}
                   onChange={(e) => handleUpdateLineRate(index, e.target.value)}
-                  style={{
-                    width: '80px',
-                    padding: '4px 6px',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '4px',
-                    fontSize: '13px'
-                  }}
+                  style={{ width: '85px', padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
                 />
               </td>
               <td>{line.gstRate}%</td>
               <td>₹{(line.cgst + line.sgst).toFixed(2)}</td>
               <td>₹{line.amount.toFixed(2)}</td>
               <td>
-                <button className="delete-btn" onClick={() => handleRemoveLine(index)}>
-                  Remove
-                </button>
+                <button className="delete-btn" onClick={() => handleRemoveLine(index)}>Remove</button>
               </td>
             </tr>
           ))}
@@ -469,9 +403,9 @@ function Sales() {
         </tbody>
       </table>
 
-      {/* Freight / Transport Input Row */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px', margin: '12px 0' }}>
-        <span style={{ fontWeight: 600, fontSize: '13.5px' }}>🚚 Freight / Transport (₹):</span>
+      {/* Freight Section */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '10px', margin: '14px 0' }}>
+        <span style={{ fontWeight: 600 }}>🚚 Freight / Transport (₹):</span>
         <input
           type="number"
           placeholder="0"
@@ -493,31 +427,27 @@ function Sales() {
         </div>
       </div>
 
-      <button
-        className="save-btn"
-        onClick={handleSaveSale}
-        disabled={billLines.length === 0 || isSaving}
-      >
+      <button className="save-btn" onClick={handleSaveSale} disabled={billLines.length === 0 || isSaving}>
         {isSaving ? 'Saving to Database...' : 'Save & Print GST Invoice'}
       </button>
 
-      {/* Official Madhya Pradesh GST Bill Modal */}
+      {/* Printable Invoice Modal */}
       {activeInvoice && (
         <div className="invoice-modal-overlay">
           <div className="invoice-modal">
             <div className="invoice-paper" id="printable-bill">
               <div className="invoice-header">
                 <h2>JANTA SHREE</h2>
-                <div style={{ fontSize: '12px', fontWeight: 600, color: '#1e293b' }}>
+                <div style={{ fontSize: '12px', fontWeight: 600 }}>
                   Prop: {activeInvoice.legalName} ({activeInvoice.branchName})
                 </div>
-                <div style={{ fontSize: '11px', color: '#475569', marginTop: '2px' }}>
+                <div style={{ fontSize: '11px', color: '#475569' }}>
                   {activeInvoice.branchAddress}
                 </div>
-                <div style={{ fontSize: '11px', color: '#047857', fontWeight: 700, marginTop: '2px' }}>
+                <div style={{ fontSize: '11px', color: '#047857', fontWeight: 700 }}>
                   GSTIN: {activeInvoice.branchGstin}
                 </div>
-                <div style={{ marginTop: '8px', fontWeight: 700, letterSpacing: '0.6px', textTransform: 'uppercase', fontSize: '12px', borderTop: '1px dashed #cbd5e1', paddingTop: '6px' }}>
+                <div style={{ marginTop: '8px', fontWeight: 700, fontSize: '12px', borderTop: '1px dashed #cbd5e1', paddingTop: '6px' }}>
                   TAX INVOICE / CASH MEMO
                 </div>
               </div>
@@ -525,16 +455,13 @@ function Sales() {
               <div className="invoice-meta">
                 <div>
                   <strong>Billed To:</strong> {activeInvoice.customer}
-                  {activeInvoice.customerPhone && <span><br />Mob: {activeInvoice.customerPhone}</span>}
-                  <br />
-                  <strong>Payment Mode:</strong> {activeInvoice.paymentType}
+                  {activeInvoice.customerPhone && <div>Mob: {activeInvoice.customerPhone}</div>}
+                  <div>Mode: {activeInvoice.paymentType}</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <strong>Invoice No:</strong> {activeInvoice.id}
-                  <br />
-                  <strong>Date:</strong> {activeInvoice.date}
-                  <br />
-                  <strong>Time:</strong> {activeInvoice.time}
+                  <div>Date: {activeInvoice.date}</div>
+                  <div>Time: {activeInvoice.time}</div>
                 </div>
               </div>
 
@@ -563,40 +490,34 @@ function Sales() {
 
               <div style={{ fontSize: '11px', color: '#475569', borderTop: '1px dashed #cbd5e1', paddingTop: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Taxable Value:</span>
-                  <span>₹{activeInvoice.taxable.toFixed(2)}</span>
+                  <span>Taxable:</span><span>₹{activeInvoice.taxable.toFixed(2)}</span>
                 </div>
                 {activeInvoice.freight > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Freight / Transport:</span>
-                    <span>₹{activeInvoice.freight.toFixed(2)}</span>
+                    <span>Freight:</span><span>₹{activeInvoice.freight.toFixed(2)}</span>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>CGST (Central Tax):</span>
-                  <span>₹{activeInvoice.cgst.toFixed(2)}</span>
+                  <span>CGST:</span><span>₹{activeInvoice.cgst.toFixed(2)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>SGST (MP State Tax):</span>
-                  <span>₹{activeInvoice.sgst.toFixed(2)}</span>
+                  <span>SGST:</span><span>₹{activeInvoice.sgst.toFixed(2)}</span>
                 </div>
               </div>
 
               <div className="invoice-total-row">
-                <span>Total Amount (Rounded):</span>
+                <span>Total Amount:</span>
                 <span>₹{activeInvoice.total}</span>
               </div>
 
               <div className="invoice-footer">
                 Thank you for shopping with Janta Shree!
-                <br />
-                Terms: Goods once sold will not be taken back without original bill.
               </div>
             </div>
 
             <div className="invoice-actions">
               <button onClick={handlePrint}>🖨️ Print GST Bill</button>
-              <button className="btn-secondary" onClick={handleCloseInvoice}>
+              <button className="btn-secondary" onClick={() => setActiveInvoice(null)}>
                 Done / Close
               </button>
             </div>

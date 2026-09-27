@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useContext } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { BranchContext } from '../BranchContext';
 
-function Sidebar({ onBranchSelect, currentBranch }) {
+function Sidebar() {
+  const { selectedBranch, changeBranch } = useContext(BranchContext);
   const [branches, setBranches] = useState([]);
   const navigate = useNavigate();
 
@@ -28,8 +30,8 @@ function Sidebar({ onBranchSelect, currentBranch }) {
       <div className="branch-select-box">
         <label>BRANCH VIEW</label>
         <select
-          value={currentBranch || 'ALL'}
-          onChange={(e) => onBranchSelect(e.target.value)}
+          value={selectedBranch || 'ALL'}
+          onChange={(e) => changeBranch(e.target.value)}
         >
           <option value="ALL">🏢 All Branches (Overview)</option>
           {branches.map((b) => (
