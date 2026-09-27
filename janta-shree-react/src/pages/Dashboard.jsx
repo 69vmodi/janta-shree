@@ -3,106 +3,102 @@ import { supabase } from '../supabaseClient';
 import { BranchContext } from '../BranchContext';
 
 function Dashboard() {
-  const selectedBranch = useContext(BranchContext);
+  const { selectedBranch } = useContext(BranchContext);
 
-  const [items, setItems] = useState([]);
-  const [sales, setSales] = useState([]);
-  const [parties, setParties] = useState([]);
+  const [todaysCash, setTodaysCash] = useState(0);
+  const [totalDue, setTotalDue] = useState(0);
+  const [stockValue, setStockValue] = useState(0);
+  const [lowStockCount, setLowStockCount] = useState(0);
 
   useEffect(() => {
     if (selectedBranch) {
-      fetchData();
+      loadDashboardMetrics();
     }
   }, [selectedBranch]);
 
-  async function fetchData() {
-    let itemsQuery = supabase.from('items').select('*');
-    let salesQuery = supabase.from('sales').select('*');
-    let partiesQuery = supabase.from('parties').select('*');
+  async function loadDashboardMetrics() {
+    try {
+      // 1. Fetch Sales for Today's Cash
+      let salesQuery = supabase.from('sales').select('*');
+      if (selectedBranch !== 'ALL') {
+        salesQuery = salesQuery.eq('branch_id', selectedBranch);
+      }
+      const { data: salesData } = await salesQuery;
 
-    // If NOT in consolidated mode, filter by the specific branch
-    if (selectedBranch !== 'ALL') {
-      itemsQuery = itemsQuery.eq('branch_id', selectedBranch);
-      salesQuery = salesQuery.eq('branch_id', selectedBranch);
-      partiesQuery = partiesQuery.eq('branch_id', selectedBranch);
+      if (salesData) {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const cashToday = salesData
+          .filter((s) => {
+            const saleDate = s.created_at ? s.created_at.slice(0, 10) : '';
+            return saleDate === todayStr && s.payment_type === 'Cash';
+          })
+          .reduce((sum, s) => sum + Number(s.total || 0), 0);
+
+        setTodaysCash(cashToday);
+      }
+
+      // 2. Fetch Parties for Total Due (Credit / Debit balances)
+      let partiesQuery = supabase.from('parties').select('*');
+      if (selectedBranch !== 'ALL') {
+        partiesQuery = partiesQuery.eq('branch_id', selectedBranch);
+      }
+      const { data: partiesData } = await partiesQuery;
+
+      if (partiesData) {
+        const dueAmount = partiesData
+          .filter((p) => p.balance_type !== 'Credit') // Customers who owe you money
+          .reduce((sum, p) => sum + Number(p.balance || 0), 0);
+
+        setTotalDue(dueAmount);
+      }
+
+      // 3. Fetch Items for Stock Value & Low Stock count
+      let itemsQuery = supabase.from('items').select('*');
+      if (selectedBranch !== 'ALL') {
+        itemsQuery = itemsQuery.eq('branch_id', selectedBranch);
+      }
+      const { data: itemsData } = await itemsQuery;
+
+      if (itemsData) {
+        const totalVal = itemsData.reduce(
+          (sum, item) => sum + (Number(item.stock || 0) * Number(item.rate || 0)),
+          0
+        );
+        const lowItems = itemsData.filter((item) => Number(item.stock || 0) <= 10).length;
+
+        setStockValue(Math.round(totalVal));
+        setLowStockCount(lowItems);
+      }
+    } catch (err) {
+      console.error('Error loading metrics:', err);
     }
-
-    const [{ data: itemsData }, { data: salesData }, { data: partiesData }] =
-      await Promise.all([itemsQuery, salesQuery, partiesQuery]);
-
-    setItems(itemsData || []);
-    setSales(salesData || []);
-    setParties(partiesData || []);
   }
-
-  const today = new Date().toLocaleDateString();
-
-  const todaysCash = sales
-    .filter(
-      (sale) =>
-        new Date(sale.created_at).toLocaleDateString() === today &&
-        sale.payment_type === 'Cash'
-    )
-    .reduce((sum, sale) => sum + Number(sale.total), 0);
-
-  const totalDue = parties
-    .filter((p) => p.type === 'customer')
-    .reduce((sum, p) => sum + Number(p.balance), 0);
-
-  const stockValue = items.reduce(
-    (sum, item) => sum + Number(item.stock) * Number(item.rate),
-    0
-  );
-
-  const lowStockItems = items.filter((item) => Number(item.stock) < 100);
 
   return (
     <div className="page">
-      <h1>
-        Dashboard {selectedBranch === 'ALL' && <span style={{ fontSize: '14px', color: '#666', fontWeight: 'normal' }}>(Consolidated Overview)</span>}
-      </h1>
+      <h1>Dashboard</h1>
+
       <div className="cards">
         <div className="card">
-          <p className="card-label">Today's cash</p>
-          <p className="card-value">₹{todaysCash}</p>
+          <div className="card-label">TODAY'S CASH</div>
+          <div className="card-value">₹{todaysCash.toLocaleString('en-IN')}</div>
         </div>
+
         <div className="card card-blue">
-          <p className="card-label">Total due</p>
-          <p className="card-value">₹{totalDue}</p>
+          <div className="card-label">TOTAL DUE (RECEIVABLE)</div>
+          <div className="card-value">₹{totalDue.toLocaleString('en-IN')}</div>
         </div>
+
         <div className="card">
-          <p className="card-label">Stock value</p>
-          <p className="card-value">₹{stockValue}</p>
+          <div className="card-label">STOCK VALUE</div>
+          <div className="card-value">₹{stockValue.toLocaleString('en-IN')}</div>
         </div>
+
         <div className="card card-blue">
-          <p className="card-label">Low stock items</p>
-          <p className="card-value">{lowStockItems.length}</p>
+          <div className="card-label">LOW STOCK ITEMS</div>
+          <div className="card-value">{lowStockCount}</div>
         </div>
       </div>
-
-      {lowStockItems.length > 0 && (
-        <div style={{ marginTop: '20px' }}>
-          <h1 style={{ fontSize: '16px' }}>Low stock alerts</h1>
-          <table>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>In Stock</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lowStockItems.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.name}</td>
-                  <td>
-                    {item.stock} {item.unit}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 }
