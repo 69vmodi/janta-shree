@@ -266,6 +266,7 @@ h1 {
   color: #94a3b8;
 }
 
+/* Action Buttons */
 button,
 .save-btn {
   height: 38px;
@@ -396,7 +397,116 @@ tbody tr:hover {
 }
 
 /* --------------------------------------------------------------------------
-   Mobile View: Clean Wrap & Responsive Sidebar
+   Invoice / Print Receipt Modal
+   -------------------------------------------------------------------------- */
+.invoice-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(15, 23, 42, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(3px);
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.invoice-modal {
+  background-color: #ffffff;
+  padding: 24px;
+  border-radius: 8px;
+  width: 480px;
+  max-width: 100%;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.25);
+  margin: auto;
+}
+
+.invoice-paper {
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.invoice-header {
+  text-align: center;
+  border-bottom: 1px dashed #cbd5e1;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.invoice-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.invoice-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #475569;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.invoice-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+  border: none;
+  box-shadow: none;
+}
+
+.invoice-table th,
+.invoice-table td {
+  padding: 6px 4px;
+  font-size: 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.invoice-table th {
+  background: transparent;
+  color: #475569;
+  border-bottom: 1px dashed #cbd5e1;
+}
+
+.invoice-total-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 15px;
+  font-weight: 700;
+  border-top: 1px dashed #cbd5e1;
+  border-bottom: 1px dashed #cbd5e1;
+  padding: 10px 0;
+  margin: 12px 0;
+}
+
+.invoice-footer {
+  text-align: center;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 10px;
+  line-height: 1.4;
+}
+
+.invoice-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.invoice-actions button {
+  flex: 1;
+}
+
+/* --------------------------------------------------------------------------
+   Mobile View (Responsive Sidebar & Layout)
    -------------------------------------------------------------------------- */
 @media (max-width: 768px) {
   .layout {
@@ -431,6 +541,7 @@ tbody tr:hover {
     border-left: none;
     border-bottom: 3px solid transparent;
     font-size: 13px;
+    flex-shrink: 0;
   }
 
   .nav-links a.active {
@@ -439,7 +550,7 @@ tbody tr:hover {
   }
 
   .sidebar-footer {
-    display: none; /* Hide desktop bottom footer or move inside nav */
+    display: none;
   }
 
   .page {
@@ -460,11 +571,72 @@ tbody tr:hover {
 
   .form-row {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .form-row input,
   .form-row select,
-  .form-row button {
+  .form-row button,
+  .save-btn {
     width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .total-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Strict Print Isolation (Only Bill Slip Appears in PDF)
+   -------------------------------------------------------------------------- */
+@media print {
+  @page {
+    margin: 6mm;
+    size: portrait;
+  }
+
+  /* Hide the rest of the application completely */
+  html,
+  body {
+    background: #ffffff !important;
+  }
+
+  .layout,
+  .sidebar,
+  .content,
+  .page,
+  .invoice-actions {
+    display: none !important;
+  }
+
+  /* Expose ONLY the invoice modal and paper slip */
+  .invoice-modal-overlay {
+    position: static !important;
+    display: block !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    backdrop-filter: none !important;
+  }
+
+  .invoice-modal {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .invoice-paper {
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 13px !important;
+    color: #000000 !important;
   }
 }
