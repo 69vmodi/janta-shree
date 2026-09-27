@@ -14,7 +14,7 @@ function Sales() {
   const [quantity, setQuantity] = useState('');
   const [customRate, setCustomRate] = useState('');
   const [gstRate, setGstRate] = useState(0);
-  const [freight, setFreight] = useState(''); // Freight option
+  const [freight, setFreight] = useState(''); // Freight / Bhada
   const [billLines, setBillLines] = useState([]);
   const [allSalesHistory, setAllSalesHistory] = useState([]);
   const [activeInvoice, setActiveInvoice] = useState(null);
@@ -85,10 +85,10 @@ function Sales() {
     if (!item || !quantity) return;
 
     const qty = Number(quantity);
-    if (qty <= 0) return alert('Please enter a valid quantity.');
+    if (qty <= 0) return alert('Enter a valid quantity.');
 
     const rate = Number(customRate);
-    if (isNaN(rate) || rate < 0) return alert('Please enter a valid rate.');
+    if (isNaN(rate) || rate < 0) return alert('Enter a valid rate/price.');
 
     const alreadyInBill = billLines
       .filter((line) => line.name === item.name)
@@ -168,7 +168,7 @@ function Sales() {
     try {
       const nextInvoiceNo = await getNextSequentialBillNumber();
 
-      // Deduct stock
+      // 1. Deduct stock
       for (const item of items) {
         const totalSold = billLines
           .filter((l) => l.name === item.name)
@@ -182,7 +182,7 @@ function Sales() {
           .eq('id', item.id);
       }
 
-      // Save sale
+      // 2. Insert into Sales
       const { data: saleData, error: saleError } = await supabase
         .from('sales')
         .insert([
@@ -202,15 +202,15 @@ function Sales() {
 
       if (saleError) throw new Error(saleError.message);
 
-      // Save party record
+      // 3. Update or Add to Parties Ledger (if Credit / Udhaari)
+      const balanceDelta = paymentType === 'Credit' ? grandTotal : 0;
+
       const { data: existingParty } = await supabase
         .from('parties')
         .select('*')
         .eq('name', customerName.trim())
         .eq('branch_id', selectedBranch)
         .maybeSingle();
-
-      const balanceDelta = paymentType === 'Credit' ? grandTotal : 0;
 
       if (existingParty) {
         await supabase
@@ -227,12 +227,12 @@ function Sales() {
             phone: customerPhone.trim() || null,
             type: 'customer',
             balance: balanceDelta,
-            balance_type: 'Dr',
             branch_id: selectedBranch
           }
         ]);
       }
 
+      // 4. Open Invoice Modal
       setActiveInvoice({
         id: nextInvoiceNo,
         date: new Date().toLocaleDateString('en-GB'),
@@ -274,7 +274,7 @@ function Sales() {
       <div className="page">
         <h1>Sales & Billing (Consolidated View)</h1>
         <div style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '16px', borderRadius: '6px', marginBottom: '24px' }}>
-          Please select a specific branch from the sidebar to create new bills.
+          Please select a branch from the sidebar to create new bills.
         </div>
         <table>
           <thead>
@@ -321,7 +321,7 @@ function Sales() {
         />
         <select value={paymentType} onChange={(e) => setPaymentType(e.target.value)}>
           <option value="Cash">Cash</option>
-          <option value="Credit">Credit</option>
+          <option value="Credit">Credit (Udhaari)</option>
         </select>
       </div>
 
@@ -403,9 +403,9 @@ function Sales() {
         </tbody>
       </table>
 
-      {/* Freight Section */}
+      {/* Freight / Bhada Input */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '10px', margin: '14px 0' }}>
-        <span style={{ fontWeight: 600 }}>🚚 Freight / Transport (₹):</span>
+        <span style={{ fontWeight: 600 }}>🚚 Freight / Bhada (₹):</span>
         <input
           type="number"
           placeholder="0"
@@ -494,7 +494,7 @@ function Sales() {
                 </div>
                 {activeInvoice.freight > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Freight:</span><span>₹{activeInvoice.freight.toFixed(2)}</span>
+                    <span>Freight / Bhada:</span><span>₹{activeInvoice.freight.toFixed(2)}</span>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
