@@ -5,11 +5,23 @@ import { BranchContext } from '../BranchContext';
 function Sales() {
   const { selectedBranch } = useContext(BranchContext);
 
+  const currentBranchId = typeof selectedBranch === 'object' && selectedBranch !== null 
+    ? selectedBranch.selectedBranch 
+    : selectedBranch;
+
+  const isAllBranches = !currentBranchId || currentBranchId === 'ALL';
+
   const [branchInfo, setBranchInfo] = useState(null);
   const [items, setItems] = useState([]);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  
+  // Payment Options:
+  // 'Cash' = Immediate settlement
+  // 'Debit' = Udhar / Credit Sale (receivable from customer)
+  // 'Credit' = Advance Adjustment (adjusted against customer deposit)
   const [paymentType, setPaymentType] = useState('Cash');
+
   const [selectedItem, setSelectedItem] = useState('');
   const [quantity, setQuantity] = useState('');
   const [customRate, setCustomRate] = useState('');
@@ -20,10 +32,8 @@ function Sales() {
   const [activeInvoice, setActiveInvoice] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  const isAllBranches = !selectedBranch || selectedBranch === 'ALL';
-
   useEffect(() => {
-    if (selectedBranch) {
+    if (currentBranchId) {
       if (isAllBranches) {
         fetchAllSalesHistory();
       } else {
@@ -31,13 +41,13 @@ function Sales() {
         fetchItems();
       }
     }
-  }, [selectedBranch]);
+  }, [currentBranchId]);
 
   async function fetchBranchDetails() {
     const { data } = await supabase
       .from('branches')
       .select('*')
-      .eq('id', selectedBranch)
+      .eq('id', currentBranchId)
       .maybeSingle();
 
     setBranchInfo(data || null);
@@ -46,7 +56,7 @@ function Sales() {
   async function fetchItems() {
     let query = supabase.from('items').select('*').order('name');
     if (!isAllBranches) {
-      query = query.or(`branch_id.eq.${selectedBranch},branch_id.is.null`);
+      query = query.or(`branch_id.eq.${currentBranchId},branch_id.is.null`);
     }
 
     const { data, error } = await query;
@@ -161,13 +171,14 @@ function Sales() {
 
   async function handleSaveSale() {
     if (!customerName.trim()) return alert('Please enter customer name.');
-    if (!selectedBranch || isAllBranches) return alert('Select a specific branch (Jobat or Alirajpur) from the sidebar.');
+    if (!currentBranchId || isAllBranches) return alert('Select a specific branch from the sidebar.');
 
     setIsSaving(true);
 
     try {
       const nextInvoiceNo = await getNextSequentialBillNumber();
 
+      // 1. Deduct Stock
       for (const item of items) {
         const totalSold = billLines
           .filter((l) => l.name === item.name)
@@ -181,52 +192,70 @@ function Sales() {
           .eq('id', item.id);
       }
 
-      const { error: saleError } = await supabase
-        .from('sales')
-        .insert([
-          {
-            invoice_no: nextInvoiceNo,
-            customer: customerName.trim(),
-            customer_phone: customerPhone.trim() || null,
-            payment_type: paymentType,
-            lines: billLines,
-            freight_charge: freightAmount,
-            total: grandTotal,
-            branch_id: selectedBranch
-          }
-        ]);
+      // 2. Save Sale
+      const { error: saleError } = await supabase.from('sales').insert([
+        {
+          invoice_no: nextInvoiceNo,
+          customer: customerName.trim(),
+          customer_phone: customerPhone.trim() || null,
+          payment_type: paymentType,
+          lines: billLines,
+          freight_charge: freightAmount,
+          total: grandTotal,
+          branch_id: currentBranchId
+        }
+      ]);
 
-      if (saleError) throw new Error(saleError.message);
+      if (saleError) throw saleError;
 
-      const isCredit = paymentType === 'Credit';
-      const balanceDelta = isCredit ? grandTotal : 0;
-
-      const { data: existingParty } = await supabase
-        .from('parties')
-        .select('*')
-        .eq('name', customerName.trim())
-        .eq('branch_id', selectedBranch)
-        .maybeSingle();
-
-      if (existingParty) {
-        await supabase
+      // 3. Customer Account Behavior:
+      // - Debit (Udhar Sale): Customer owes us money -> Increases Debit balance (Dr)
+      // - Credit (Advance Adjustment): Customer already paid advance -> Reduces Advance (Cr)
+      // - Cash: Immediate full payment -> No ledger balance change
+      if (paymentType === 'Debit' || paymentType === 'Credit') {
+        const { data: existingParty } = await supabase
           .from('parties')
-          .update({
-            balance: Number(existingParty.balance || 0) + balanceDelta,
-            phone: customerPhone.trim() || existingParty.phone
-          })
-          .eq('id', existingParty.id);
-      } else {
-        await supabase.from('parties').insert([
-          {
-            name: customerName.trim(),
-            phone: customerPhone.trim() || null,
-            type: 'customer',
-            balance: balanceDelta,
-            balance_type: 'Dr',
-            branch_id: selectedBranch
+          .select('*')
+          .eq('name', customerName.trim())
+          .eq('branch_id', currentBranchId)
+          .maybeSingle();
+
+        if (existingParty) {
+          let currentBal = Number(existingParty.balance || 0);
+          let currentType = existingParty.balance_type || 'Dr';
+          let signedBal = currentType === 'Dr' ? currentBal : -currentBal;
+
+          if (paymentType === 'Debit') {
+            // Added Udhar
+            signedBal += grandTotal;
+          } else if (paymentType === 'Credit') {
+            // Deducted from advance
+            signedBal += grandTotal;
           }
-        ]);
+
+          const newType = signedBal >= 0 ? 'Dr' : 'Cr';
+          const newBal = Math.abs(signedBal);
+
+          await supabase
+            .from('parties')
+            .update({
+              balance: newBal,
+              balance_type: newType,
+              phone: customerPhone.trim() || existingParty.phone
+            })
+            .eq('id', existingParty.id);
+        } else {
+          await supabase.from('parties').insert([
+            {
+              name: customerName.trim(),
+              phone: customerPhone.trim() || null,
+              type: 'customer',
+              balance: grandTotal,
+              balance_type: paymentType === 'Debit' ? 'Dr' : 'Cr',
+              branch_id: currentBranchId
+            }
+          ]);
+        }
       }
 
       setActiveInvoice({
@@ -357,6 +386,7 @@ function Sales() {
           placeholder="Customer Name *"
           value={customerName}
           onChange={(e) => setCustomerName(e.target.value)}
+          required
         />
         <input
           type="text"
@@ -365,9 +395,9 @@ function Sales() {
           onChange={(e) => setCustomerPhone(e.target.value)}
         />
         <select value={paymentType} onChange={(e) => setPaymentType(e.target.value)}>
-          <option value="Cash">Cash</option>
-          <option value="Debit">Debit (Card / UPI / Online)</option>
-          <option value="Credit">Credit (Udhaari)</option>
+          <option value="Cash">💵 Cash (Immediate Payment)</option>
+          <option value="Debit">📝 Debit (Credit Sale / Udhar)</option>
+          <option value="Credit">🛡️ Credit (Advance Adjustment)</option>
         </select>
       </div>
 

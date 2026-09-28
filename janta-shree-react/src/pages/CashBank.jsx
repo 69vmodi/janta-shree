@@ -12,11 +12,16 @@ function CashBank() {
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const isAllBranches = !selectedBranch || selectedBranch === 'ALL';
+  // Normalize selectedBranch to string
+  const currentBranchId = typeof selectedBranch === 'object' && selectedBranch !== null 
+    ? selectedBranch.selectedBranch 
+    : selectedBranch;
+
+  const isAllBranches = !currentBranchId || currentBranchId === 'ALL';
 
   useEffect(() => {
     loadCashEntries();
-  }, [selectedBranch]);
+  }, [currentBranchId]);
 
   async function loadCashEntries() {
     let query = supabase
@@ -25,7 +30,7 @@ function CashBank() {
       .order('created_at', { ascending: false });
 
     if (!isAllBranches) {
-      query = query.or(`branch_id.eq.${selectedBranch},branch_id.is.null`);
+      query = query.or(`branch_id.eq.${currentBranchId},branch_id.is.null`);
     }
 
     const { data, error } = await query;
@@ -37,7 +42,7 @@ function CashBank() {
   async function handleAddEntry(e) {
     e.preventDefault();
     if (!amount || Number(amount) <= 0) return alert('Please enter a valid amount.');
-    if (isAllBranches) return alert('Please select a specific branch (Jobat or Alirajpur) from the sidebar.');
+    if (isAllBranches) return alert('Please select a specific branch from the sidebar first.');
 
     setLoading(true);
 
@@ -47,14 +52,14 @@ function CashBank() {
         amount: Number(amount),
         mode: mode,
         description: description.trim() || (entryType === 'IN' ? 'Cash Received' : 'Cash Paid / Expense'),
-        branch_id: selectedBranch
+        branch_id: currentBranchId
       }
     ]);
 
     setLoading(false);
 
     if (error) {
-      alert('Error recording cash transaction: ' + error.message);
+      alert('Error saving cash entry: ' + error.message);
     } else {
       setAmount('');
       setDescription('');
@@ -74,19 +79,19 @@ function CashBank() {
 
   return (
     <div className="page">
-      <h1>Cash & Bank Register</h1>
+      <h1>Cash & Bank</h1>
 
       <div className="cards">
         <div className="card">
-          <div className="card-label">Total Cash In (Jama)</div>
+          <div className="card-label">TOTAL CASH IN</div>
           <div className="card-value" style={{ color: '#047857' }}>₹{totalIn.toLocaleString('en-IN')}</div>
         </div>
         <div className="card">
-          <div className="card-label">Total Cash Out (Kharch)</div>
+          <div className="card-label">TOTAL CASH OUT</div>
           <div className="card-value" style={{ color: '#dc2626' }}>₹{totalOut.toLocaleString('en-IN')}</div>
         </div>
         <div className="card">
-          <div className="card-label">Net Available Cash</div>
+          <div className="card-label">NET BALANCE</div>
           <div className="card-value" style={{ color: netBalance >= 0 ? '#047857' : '#dc2626' }}>
             ₹{netBalance.toLocaleString('en-IN')}
           </div>
@@ -95,56 +100,54 @@ function CashBank() {
 
       {!isAllBranches && (
         <form onSubmit={handleAddEntry} className="form-box">
-          <h2 style={{ fontSize: '15px', marginBottom: '14px', color: '#1e293b' }}>
-            + Record Cash / Expense Entry
-          </h2>
           <div className="form-row">
             <select value={entryType} onChange={(e) => setEntryType(e.target.value)}>
-              <option value="IN">💰 Cash IN (Receipt / Jama)</option>
-              <option value="OUT">💸 Cash OUT (Expense / Payment)</option>
+              <option value="IN">Cash In (+)</option>
+              <option value="OUT">Cash Out (-)</option>
             </select>
             <input
               type="number"
               step="any"
-              placeholder="Amount (₹) *"
+              placeholder="Amount (₹)"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               required
             />
-            <select value={mode} onChange={(e) => setMode(e.target.value)}>
-              <option value="Cash">Cash</option>
-              <option value="UPI / Online">UPI / PhonePe / GPay</option>
-              <option value="Bank">Bank Account</option>
-            </select>
             <input
               type="text"
-              placeholder="Description / Remarks (e.g. Chai, Labour, Diesel)"
+              placeholder="Description (Remarks)"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
+            <select value={mode} onChange={(e) => setMode(e.target.value)}>
+              <option value="Cash">Cash</option>
+              <option value="UPI / Online">UPI / Online</option>
+              <option value="Bank">Bank Account</option>
+            </select>
             <button type="submit" disabled={loading}>
-              {loading ? 'Saving...' : '+ Save Entry'}
+              {loading ? 'Adding...' : '+ Add Entry'}
             </button>
           </div>
         </form>
       )}
 
+      <h2 style={{ fontSize: '16px', margin: '20px 0 12px 0' }}>Transaction History</h2>
       <table>
         <thead>
           <tr>
-            <th>Date & Time</th>
-            {isAllBranches && <th>Branch</th>}
-            <th>Type</th>
-            <th>Mode</th>
-            <th>Description</th>
-            <th style={{ textAlign: 'right' }}>Amount (₹)</th>
+            <th>DATE</th>
+            {isAllBranches && <th>BRANCH</th>}
+            <th>TYPE</th>
+            <th>MODE</th>
+            <th>DESCRIPTION</th>
+            <th style={{ textAlign: 'right' }}>AMOUNT (₹)</th>
           </tr>
         </thead>
         <tbody>
           {entries.map((e) => (
             <tr key={e.id}>
               <td>{new Date(e.created_at).toLocaleString('en-GB')}</td>
-              {isAllBranches && <td><strong>{e.branch?.name || 'All'}</strong></td>}
+              {isAllBranches && <td><strong>{e.branch?.name || '-'}</strong></td>}
               <td>
                 <span
                   className="badge"
@@ -153,7 +156,7 @@ function CashBank() {
                     color: e.type === 'IN' ? '#166534' : '#991b1b'
                   }}
                 >
-                  {e.type === 'IN' ? 'RECEIPT (IN)' : 'EXPENSE (OUT)'}
+                  {e.type === 'IN' ? 'Cash In (+)' : 'Cash Out (-)'}
                 </span>
               </td>
               <td>{e.mode || 'Cash'}</td>

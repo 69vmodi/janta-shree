@@ -5,6 +5,12 @@ import { BranchContext } from '../BranchContext';
 function Transfers() {
   const { selectedBranch } = useContext(BranchContext);
 
+  // Normalize selectedBranch to string ID
+  const currentBranchId =
+    typeof selectedBranch === 'object' && selectedBranch !== null
+      ? selectedBranch.selectedBranch
+      : selectedBranch;
+
   const [branches, setBranches] = useState([]);
   const [fromBranch, setFromBranch] = useState('');
   const [toBranch, setToBranch] = useState('');
@@ -21,10 +27,17 @@ function Transfers() {
   }, []);
 
   useEffect(() => {
-    if (selectedBranch && selectedBranch !== 'ALL') {
-      setFromBranch(selectedBranch);
+    if (branches.length > 0) {
+      if (currentBranchId && currentBranchId !== 'ALL') {
+        setFromBranch(currentBranchId);
+        const otherBranch = branches.find((b) => b.id !== currentBranchId);
+        if (otherBranch) setToBranch(otherBranch.id);
+      } else {
+        setFromBranch(branches[0].id);
+        if (branches[1]) setToBranch(branches[1].id);
+      }
     }
-  }, [selectedBranch]);
+  }, [currentBranchId, branches]);
 
   useEffect(() => {
     if (fromBranch) {
@@ -34,20 +47,17 @@ function Transfers() {
 
   async function loadBranches() {
     const { data } = await supabase.from('branches').select('*').order('name');
-    if (data) {
+    if (data && data.length > 0) {
       setBranches(data);
-      if (data.length > 1) {
-        if (!fromBranch) setFromBranch(data[0].id);
-        if (!toBranch) setToBranch(data[1].id);
-      }
     }
   }
 
   async function loadBranchItems(branchId) {
-    const { data } = await supabase
+    // Includes unassigned items so stock is never hidden
+    const { data, error } = await supabase
       .from('items')
       .select('*')
-      .eq('branch_id', branchId)
+      .or(`branch_id.eq.${branchId},branch_id.is.null`)
       .order('name');
 
     setFromItems(data || []);
@@ -81,7 +91,7 @@ function Transfers() {
     if (!sourceItem) return alert('Please select an item to transfer.');
 
     if (qty > Number(sourceItem.stock || 0)) {
-      return alert(`Cannot transfer ${qty} ${sourceItem.unit}. Only ${sourceItem.stock} available in ${sourceItem.name}.`);
+      return alert(`Cannot transfer ${qty} ${sourceItem.unit || ''}. Only ${sourceItem.stock} available in ${sourceItem.name}.`);
     }
 
     setLoading(true);
@@ -100,7 +110,7 @@ function Transfers() {
         .from('items')
         .select('*')
         .eq('branch_id', toBranch)
-        .eq('name', sourceItem.name)
+        .ilike('name', sourceItem.name.trim())
         .maybeSingle();
 
       if (destItem) {
@@ -112,10 +122,10 @@ function Transfers() {
         await supabase.from('items').insert([
           {
             name: sourceItem.name,
-            category: sourceItem.category,
-            unit: sourceItem.unit,
+            category: sourceItem.category || 'General',
+            unit: sourceItem.unit || 'NOS',
             stock: qty,
-            rate: sourceItem.rate,
+            rate: sourceItem.rate || 0,
             branch_id: toBranch
           }
         ]);
@@ -128,12 +138,12 @@ function Transfers() {
           to_branch_id: toBranch,
           item_name: sourceItem.name,
           quantity: qty,
-          unit: sourceItem.unit,
+          unit: sourceItem.unit || 'NOS',
           notes: notes.trim() || 'Internal Branch Stock Transfer'
         }
       ]);
 
-      alert(`Successfully transferred ${qty} ${sourceItem.unit} of "${sourceItem.name}"!`);
+      alert(`Successfully transferred ${qty} ${sourceItem.unit || ''} of "${sourceItem.name}"!`);
       setQuantity('');
       setNotes('');
       loadBranchItems(fromBranch);
@@ -189,7 +199,7 @@ function Transfers() {
             <select value={selectedItemId} onChange={(e) => setSelectedItemId(e.target.value)} required>
               {fromItems.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.name} ({item.stock} {item.unit} available)
+                  {item.name} ({item.stock} {item.unit || ''} available)
                 </option>
               ))}
               {fromItems.length === 0 && <option value="">No items available in this branch</option>}
@@ -198,11 +208,11 @@ function Transfers() {
 
           <div>
             <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
-              TRANSFER QUANTITY
+              TRANSFER QUANTITY {selectedItemObj ? `(Max: ${selectedItemObj.stock})` : ''}
             </label>
             <input
               type="number"
-              placeholder={`Max: ${selectedItemObj?.stock || 0}`}
+              placeholder="Qty"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
               required
@@ -243,7 +253,7 @@ function Transfers() {
             <tr key={t.id}>
               <td>{new Date(t.created_at).toLocaleString('en-GB')}</td>
               <td><strong>{t.item_name}</strong></td>
-              <td style={{ fontWeight: 700, color: '#0284c7' }}>{t.quantity} {t.unit}</td>
+              <td style={{ fontWeight: 700, color: '#0284c7' }}>{t.quantity} {t.unit || ''}</td>
               <td>{t.from_branch?.name || 'Jobat'}</td>
               <td>{t.to_branch?.name || 'Alirajpur'}</td>
               <td>{t.notes || '-'}</td>
