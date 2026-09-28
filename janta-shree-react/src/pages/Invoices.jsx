@@ -27,33 +27,43 @@ function Invoices() {
     }
   }
 
-  function handlePrintInvoice() {
-    const printableElement = document.getElementById('printable-bill');
+  function handlePrintDirect() {
+    const printableElement = document.getElementById('printable-bill-history');
     if (!printableElement) return;
 
-    const printWindow = window.open('', '_blank', 'width=450,height=700');
-    if (!printWindow) {
-      alert('Please allow popups to print invoices.');
-      return;
+    let iframe = document.getElementById('receipt-print-frame');
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.id = 'receipt-print-frame';
+      iframe.style.position = 'fixed';
+      iframe.style.top = '-10000px';
+      iframe.style.left = '-10000px';
+      iframe.style.width = '0px';
+      iframe.style.height = '0px';
+      iframe.style.border = 'none';
+      document.body.appendChild(iframe);
     }
 
-    printWindow.document.write(`
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(`
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Invoice - ${selectedInvoice.invoice_no || selectedInvoice.id}</title>
+          <meta charset="utf-8">
+          <title>Invoice</title>
           <style>
             * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
-            body { padding: 16px; color: #000; background: #fff; font-size: 13px; line-height: 1.4; }
-            .invoice-header { text-align: center; border-bottom: 1px dashed #64748b; padding-bottom: 10px; margin-bottom: 10px; }
-            .invoice-header h2 { font-size: 19px; font-weight: 700; margin-bottom: 2px; }
-            .invoice-meta { display: flex; justify-content: space-between; font-size: 11.5px; margin-bottom: 12px; }
+            body { padding: 16px; font-size: 13px; color: #000; background: #fff; line-height: 1.4; }
+            .invoice-header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 10px; }
+            .invoice-header h2 { font-size: 20px; font-weight: 700; margin-bottom: 2px; }
+            .invoice-meta { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 12px; }
             table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-            th, td { padding: 5px 3px; font-size: 11.5px; text-align: left; }
-            th { border-bottom: 1px dashed #64748b; font-weight: 600; }
-            td { border-bottom: 1px solid #f1f5f9; }
-            .invoice-total-row { display: flex; justify-content: space-between; font-size: 15px; font-weight: 700; border-top: 1px dashed #64748b; border-bottom: 1px dashed #64748b; padding: 8px 0; margin: 10px 0; }
-            .invoice-footer { text-align: center; font-size: 11px; color: #64748b; margin-top: 12px; }
+            th, td { padding: 6px 4px; font-size: 12px; text-align: left; }
+            th { border-bottom: 1px dashed #000; font-weight: 700; }
+            td { border-bottom: 1px solid #e2e8f0; }
+            .invoice-total-row { display: flex; justify-content: space-between; font-size: 16px; font-weight: 700; border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 8px 0; margin: 10px 0; }
+            .invoice-footer { text-align: center; font-size: 11px; color: #555; margin-top: 12px; }
             @page { margin: 6mm; size: auto; }
           </style>
         </head>
@@ -62,12 +72,11 @@ function Invoices() {
         </body>
       </html>
     `);
+    doc.close();
 
-    printWindow.document.close();
-    printWindow.focus();
     setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
     }, 250);
   }
 
@@ -121,7 +130,7 @@ function Invoices() {
       {selectedInvoice && (
         <div className="invoice-modal-overlay">
           <div className="invoice-modal">
-            <div className="invoice-paper" id="printable-bill">
+            <div className="invoice-paper" id="printable-bill-history">
               <div className="invoice-header">
                 <h2>JANTA SHREE</h2>
                 <div style={{ fontSize: '12px', fontWeight: 600 }}>
@@ -194,7 +203,7 @@ function Invoices() {
             </div>
 
             <div className="invoice-actions">
-              <button onClick={handlePrintInvoice}>🖨️ Print Bill</button>
+              <button onClick={handlePrintDirect}>🖨️ Print Bill</button>
               <button className="btn-secondary" onClick={() => setSelectedInvoice(null)}>
                 Close
               </button>

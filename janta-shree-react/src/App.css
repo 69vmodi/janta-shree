@@ -17,8 +17,6 @@
   --js-text-muted: #64748b;
   --js-danger: #dc2626;
   --js-danger-hover: #b91c1c;
-  --js-shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06);
-  --js-shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08);
 }
 
 * {
@@ -45,9 +43,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* --------------------------------------------------------------------------
-   App Shell & Navigation
-   -------------------------------------------------------------------------- */
 .layout {
   display: flex;
   min-height: 100vh;
@@ -101,10 +96,6 @@ body {
   font-weight: 500;
   outline: none;
   cursor: pointer;
-}
-
-.branch-select-box select:focus {
-  border-color: var(--js-accent);
 }
 
 .nav-links {
@@ -162,9 +153,6 @@ body {
   color: #ffffff;
 }
 
-/* --------------------------------------------------------------------------
-   Main Workspace
-   -------------------------------------------------------------------------- */
 .content {
   flex-grow: 1;
   background-color: var(--js-bg);
@@ -188,9 +176,6 @@ h1 {
   gap: 10px;
 }
 
-/* --------------------------------------------------------------------------
-   Metric Cards
-   -------------------------------------------------------------------------- */
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -203,19 +188,8 @@ h1 {
   border: 1px solid var(--js-border);
   border-radius: 6px;
   padding: 18px 20px;
-  position: relative;
   border-top: 3px solid #3b82f6;
-  box-shadow: var(--js-shadow-sm);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.card:hover {
-  box-shadow: var(--js-shadow-md);
-  transform: translateY(-1px);
-}
-
-.card.card-blue {
-  border-top-color: var(--js-primary);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
 .card-label {
@@ -234,16 +208,13 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 
-/* --------------------------------------------------------------------------
-   Forms & Inputs
-   -------------------------------------------------------------------------- */
 .form-box {
   background: var(--js-surface);
   border: 1px solid var(--js-border);
   border-radius: 6px;
   padding: 20px;
   margin-bottom: 24px;
-  box-shadow: var(--js-shadow-sm);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
 .form-row {
@@ -268,7 +239,6 @@ h1 {
   border: 1px solid #cbd5e1;
   border-radius: 4px;
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
   flex: 1 1 160px;
 }
 
@@ -278,11 +248,6 @@ h1 {
   box-shadow: 0 0 0 3px rgba(4, 120, 87, 0.15);
 }
 
-.form-row input::placeholder {
-  color: #94a3b8;
-}
-
-/* Buttons */
 button,
 .save-btn {
   height: 38px;
@@ -297,18 +262,12 @@ button,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.15s ease, transform 0.1s ease;
   white-space: nowrap;
 }
 
 button:hover:not(:disabled),
 .save-btn:hover:not(:disabled) {
   background-color: var(--js-primary-hover);
-}
-
-button:active:not(:disabled),
-.save-btn:active:not(:disabled) {
-  transform: scale(0.99);
 }
 
 button:disabled,
@@ -343,9 +302,6 @@ button:disabled,
   background-color: #e2e8f0 !important;
 }
 
-/* --------------------------------------------------------------------------
-   Tables
-   -------------------------------------------------------------------------- */
 table {
   width: 100%;
   border-collapse: collapse;
@@ -354,7 +310,7 @@ table {
   border-radius: 6px;
   overflow: hidden;
   margin-bottom: 20px;
-  box-shadow: var(--js-shadow-sm);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
 thead {
@@ -416,12 +372,9 @@ tbody tr:hover {
   font-size: 15px;
   font-weight: 700;
   color: var(--js-text-main);
-  box-shadow: var(--js-shadow-sm);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
-/* --------------------------------------------------------------------------
-   Invoice Modal & Styling
-   -------------------------------------------------------------------------- */
 .invoice-modal-overlay {
   position: fixed;
   inset: 0;
@@ -462,7 +415,6 @@ tbody tr:hover {
   font-size: 20px;
   font-weight: 700;
   color: #0f172a;
-  letter-spacing: 0.5px;
   margin-bottom: 2px;
 }
 
@@ -525,37 +477,28 @@ tbody tr:hover {
   flex: 1;
 }
 
-/* --------------------------------------------------------------------------
-   Mobile View (Responsive Layout)
-   -------------------------------------------------------------------------- */
 @media (max-width: 768px) {
   .layout {
     flex-direction: column;
   }
-
   .sidebar {
     width: 100%;
     border-right: none;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
-
   .brand {
     padding: 14px 16px;
   }
-
   .branch-select-box {
     padding: 10px 16px;
   }
-
   .nav-links {
     flex-direction: row;
     overflow-x: auto;
     white-space: nowrap;
     padding: 8px 12px;
     gap: 4px;
-    -webkit-overflow-scrolling: touch;
   }
-
   .nav-links a {
     padding: 8px 12px;
     border-left: none;
@@ -563,37 +506,29 @@ tbody tr:hover {
     font-size: 13px;
     flex-shrink: 0;
   }
-
   .nav-links a.active {
     border-left-color: transparent;
     border-bottom-color: var(--js-accent);
   }
-
   .sidebar-footer {
     display: none;
   }
-
   .page {
     padding: 16px 12px;
   }
-
   .cards {
     grid-template-columns: 1fr;
     gap: 12px;
   }
-
   .page table {
     display: block;
     overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
     white-space: nowrap;
   }
-
   .form-row {
     flex-direction: column;
     align-items: stretch;
   }
-
   .form-row input,
   .form-row select,
   .form-row button,
@@ -601,115 +536,8 @@ tbody tr:hover {
     width: 100%;
     flex: 1 1 100%;
   }
-
   .total-row {
     flex-direction: column;
     gap: 8px;
-  }
-}
-
-/* --------------------------------------------------------------------------
-   Clean Print Mode (Direct Element Isolation - Fixes Blank Pages)
-   -------------------------------------------------------------------------- */
-@media print {
-  @page {
-    margin: 4mm;
-    size: auto;
-  }
-
-  html,
-  body {
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #ffffff !important;
-    color: #000000 !important;
-    width: 100% !important;
-    height: auto !important;
-    min-height: 0 !important;
-  }
-
-  .sidebar,
-  .brand,
-  .branch-select-box,
-  .nav-links,
-  .sidebar-footer,
-  .page,
-  .invoice-actions,
-  header,
-  footer {
-    display: none !important;
-  }
-
-  .invoice-modal-overlay {
-    position: static !important;
-    display: block !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: transparent !important;
-    backdrop-filter: none !important;
-    width: 100% !important;
-    height: auto !important;
-    min-height: 0 !important;
-    overflow: visible !important;
-  }
-
-  .invoice-modal {
-    position: static !important;
-    display: block !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    box-shadow: none !important;
-    border: none !important;
-    background: transparent !important;
-  }
-
-  #printable-bill {
-    display: block !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    color: #000000 !important;
-    font-size: 13px !important;
-  }
-
-  #printable-bill * {
-    color: #000000 !important;
-    visibility: visible !important;
-  }
-
-  #printable-bill table {
-    display: table !important;
-    width: 100% !important;
-    border-collapse: collapse !important;
-    white-space: normal !important;
-    box-shadow: none !important;
-    border: none !important;
-    margin-bottom: 10px !important;
-  }
-
-  #printable-bill table thead {
-    display: table-header-group !important;
-    background: transparent !important;
-  }
-
-  #printable-bill table tbody {
-    display: table-row-group !important;
-  }
-
-  #printable-bill table tr {
-    display: table-row !important;
-    page-break-inside: avoid !important;
-  }
-
-  #printable-bill table th,
-  #printable-bill table td {
-    display: table-cell !important;
-    padding: 5px 4px !important;
-    border-bottom: 1px dashed #718096 !important;
-    font-size: 12px !important;
-    color: #000000 !important;
   }
 }
