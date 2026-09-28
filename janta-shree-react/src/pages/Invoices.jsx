@@ -28,9 +28,47 @@ function Invoices() {
   }
 
   function handlePrintInvoice() {
+    const printableElement = document.getElementById('printable-bill');
+    if (!printableElement) return;
+
+    const printWindow = window.open('', '_blank', 'width=450,height=700');
+    if (!printWindow) {
+      alert('Please allow popups to print invoices.');
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Invoice - ${selectedInvoice.invoice_no || selectedInvoice.id}</title>
+          <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+            body { padding: 16px; color: #000; background: #fff; font-size: 13px; line-height: 1.4; }
+            .invoice-header { text-align: center; border-bottom: 1px dashed #64748b; padding-bottom: 10px; margin-bottom: 10px; }
+            .invoice-header h2 { font-size: 19px; font-weight: 700; margin-bottom: 2px; }
+            .invoice-meta { display: flex; justify-content: space-between; font-size: 11.5px; margin-bottom: 12px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+            th, td { padding: 5px 3px; font-size: 11.5px; text-align: left; }
+            th { border-bottom: 1px dashed #64748b; font-weight: 600; }
+            td { border-bottom: 1px solid #f1f5f9; }
+            .invoice-total-row { display: flex; justify-content: space-between; font-size: 15px; font-weight: 700; border-top: 1px dashed #64748b; border-bottom: 1px dashed #64748b; padding: 8px 0; margin: 10px 0; }
+            .invoice-footer { text-align: center; font-size: 11px; color: #64748b; margin-top: 12px; }
+            @page { margin: 6mm; size: auto; }
+          </style>
+        </head>
+        <body>
+          ${printableElement.innerHTML}
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    printWindow.focus();
     setTimeout(() => {
-      window.print();
-    }, 150);
+      printWindow.print();
+      printWindow.close();
+    }, 250);
   }
 
   return (
@@ -80,7 +118,6 @@ function Invoices() {
         </tbody>
       </table>
 
-      {/* View & Print Bill Modal */}
       {selectedInvoice && (
         <div className="invoice-modal-overlay">
           <div className="invoice-modal">

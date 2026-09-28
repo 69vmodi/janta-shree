@@ -44,17 +44,12 @@ function Sales() {
   }
 
   async function fetchItems() {
-    let query = supabase
-      .from('items')
-      .select('*')
-      .order('name');
-
+    let query = supabase.from('items').select('*').order('name');
     if (!isAllBranches) {
       query = query.or(`branch_id.eq.${selectedBranch},branch_id.is.null`);
     }
 
     const { data, error } = await query;
-
     if (!error && data) {
       setItems(data);
       if (data.length > 0) {
@@ -93,7 +88,7 @@ function Sales() {
     if (qty <= 0) return alert('Enter a valid quantity.');
 
     const rate = Number(customRate);
-    if (isNaN(rate) || rate < 0) return alert('Enter a valid rate/price.');
+    if (isNaN(rate) || rate < 0) return alert('Enter a valid rate.');
 
     const alreadyInBill = billLines
       .filter((line) => line.name === item.name)
@@ -173,7 +168,6 @@ function Sales() {
     try {
       const nextInvoiceNo = await getNextSequentialBillNumber();
 
-      // 1. Deduct item stock
       for (const item of items) {
         const totalSold = billLines
           .filter((l) => l.name === item.name)
@@ -187,8 +181,7 @@ function Sales() {
           .eq('id', item.id);
       }
 
-      // 2. Insert into Sales
-      const { data: saleData, error: saleError } = await supabase
+      const { error: saleError } = await supabase
         .from('sales')
         .insert([
           {
@@ -201,13 +194,10 @@ function Sales() {
             total: grandTotal,
             branch_id: selectedBranch
           }
-        ])
-        .select()
-        .single();
+        ]);
 
       if (saleError) throw new Error(saleError.message);
 
-      // 3. Update or Add to Parties Ledger (Credit increases party pending due)
       const isCredit = paymentType === 'Credit';
       const balanceDelta = isCredit ? grandTotal : 0;
 
@@ -239,7 +229,6 @@ function Sales() {
         ]);
       }
 
-      // 4. Mount Invoice Modal
       setActiveInvoice({
         id: nextInvoiceNo,
         date: new Date().toLocaleDateString('en-GB'),
@@ -273,9 +262,47 @@ function Sales() {
   }
 
   function handlePrint() {
+    const printableElement = document.getElementById('printable-bill');
+    if (!printableElement) return;
+
+    const printWindow = window.open('', '_blank', 'width=450,height=700');
+    if (!printWindow) {
+      alert('Please allow popups to print invoices.');
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Invoice - ${activeInvoice.id}</title>
+          <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+            body { padding: 16px; color: #000; background: #fff; font-size: 13px; line-height: 1.4; }
+            .invoice-header { text-align: center; border-bottom: 1px dashed #64748b; padding-bottom: 10px; margin-bottom: 10px; }
+            .invoice-header h2 { font-size: 19px; font-weight: 700; margin-bottom: 2px; }
+            .invoice-meta { display: flex; justify-content: space-between; font-size: 11.5px; margin-bottom: 12px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+            th, td { padding: 5px 3px; font-size: 11.5px; text-align: left; }
+            th { border-bottom: 1px dashed #64748b; font-weight: 600; }
+            td { border-bottom: 1px solid #f1f5f9; }
+            .invoice-total-row { display: flex; justify-content: space-between; font-size: 15px; font-weight: 700; border-top: 1px dashed #64748b; border-bottom: 1px dashed #64748b; padding: 8px 0; margin: 10px 0; }
+            .invoice-footer { text-align: center; font-size: 11px; color: #64748b; margin-top: 12px; }
+            @page { margin: 6mm; size: auto; }
+          </style>
+        </head>
+        <body>
+          ${printableElement.innerHTML}
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    printWindow.focus();
     setTimeout(() => {
-      window.print();
-    }, 150);
+      printWindow.print();
+      printWindow.close();
+    }, 250);
   }
 
   if (isAllBranches) {
@@ -413,7 +440,6 @@ function Sales() {
         </tbody>
       </table>
 
-      {/* Freight / Bhada Input */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '10px', margin: '14px 0' }}>
         <span style={{ fontWeight: 600 }}>🚚 Freight / Bhada (₹):</span>
         <input
@@ -441,7 +467,6 @@ function Sales() {
         {isSaving ? 'Saving to Database...' : 'Save & Print GST Invoice'}
       </button>
 
-      {/* Printable Invoice Modal */}
       {activeInvoice && (
         <div className="invoice-modal-overlay">
           <div className="invoice-modal">
