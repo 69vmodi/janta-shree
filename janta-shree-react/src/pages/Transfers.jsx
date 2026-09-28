@@ -3,42 +3,54 @@ import { supabase } from '../supabaseClient';
 import { BranchContext } from '../BranchContext';
 
 function Transfers() {
-  const selectedBranch = useContext(BranchContext);
+  const { selectedBranch } = useContext(BranchContext);
 
   const [branches, setBranches] = useState([]);
-  const [sourceItems, setSourceItems] = useState([]);
+  const [fromBranch, setFromBranch] = useState('');
+  const [toBranch, setToBranch] = useState('');
+  const [fromItems, setFromItems] = useState([]);
   const [selectedItemId, setSelectedItemId] = useState('');
-  const [toBranchId, setToBranchId] = useState('');
   const [quantity, setQuantity] = useState('');
-  const [note, setNote] = useState('');
-  const [transfers, setTransfers] = useState([]);
+  const [notes, setNotes] = useState('');
+  const [transferHistory, setTransferHistory] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetchBranches();
+    loadBranches();
+    loadTransferHistory();
   }, []);
 
   useEffect(() => {
-    if (selectedBranch) {
-      fetchSourceItems();
-      fetchTransferHistory();
+    if (selectedBranch && selectedBranch !== 'ALL') {
+      setFromBranch(selectedBranch);
     }
   }, [selectedBranch]);
 
-  async function fetchBranches() {
+  useEffect(() => {
+    if (fromBranch) {
+      loadBranchItems(fromBranch);
+    }
+  }, [fromBranch]);
+
+  async function loadBranches() {
     const { data } = await supabase.from('branches').select('*').order('name');
-    setBranches(data || []);
+    if (data) {
+      setBranches(data);
+      if (data.length > 1) {
+        if (!fromBranch) setFromBranch(data[0].id);
+        if (!toBranch) setToBranch(data[1].id);
+      }
+    }
   }
 
-  async function fetchSourceItems() {
+  async function loadBranchItems(branchId) {
     const { data } = await supabase
       .from('items')
       .select('*')
-      .eq('branch_id', selectedBranch)
-      .gt('stock', 0)
+      .eq('branch_id', branchId)
       .order('name');
 
-    setSourceItems(data || []);
+    setFromItems(data || []);
     if (data && data.length > 0) {
       setSelectedItemId(data[0].id);
     } else {
@@ -46,210 +58,201 @@ function Transfers() {
     }
   }
 
-  async function fetchTransferHistory() {
+  async function loadTransferHistory() {
     const { data } = await supabase
       .from('stock_transfers')
-      .select(`
-        id,
-        created_at,
-        item_name,
-        quantity,
-        unit,
-        note,
-        from_branch:from_branch_id(name),
-        to_branch:to_branch_id(name)
-      `)
-      .or(`from_branch_id.eq.${selectedBranch},to_branch_id.eq.${selectedBranch}`)
-      .order('created_at', { ascending: false });
+      .select('*, from_branch:branches!from_branch_id(name), to_branch:branches!to_branch_id(name)')
+      .order('created_at', { ascending: false })
+      .limit(30);
 
-    setTransfers(data || []);
+    setTransferHistory(data || []);
   }
 
-  // Filter destination branches so user cannot transfer to the same branch
-  const destinationBranches = branches.filter((b) => b.id !== selectedBranch);
+  async function handleTransfer(e) {
+    e.preventDefault();
 
-  async function handleTransfer() {
-    if (!selectedBranch) {
-      alert('Please select a branch first.');
-      return;
-    }
+    if (!fromBranch || !toBranch) return alert('Please select both source and destination branches.');
+    if (fromBranch === toBranch) return alert('Source and Destination branches cannot be the same.');
 
-    if (!toBranchId) {
-      alert('Please select destination branch.');
-      return;
-    }
+    const qty = Number(quantity);
+    if (!qty || qty <= 0) return alert('Please enter a valid transfer quantity.');
 
-    const transferQty = Number(quantity);
-    if (!transferQty || transferQty <= 0) {
-      alert('Please enter a valid transfer quantity.');
-      return;
-    }
+    const sourceItem = fromItems.find((i) => i.id === selectedItemId);
+    if (!sourceItem) return alert('Please select an item to transfer.');
 
-    const sourceItem = sourceItems.find((i) => i.id === selectedItemId);
-    if (!sourceItem) {
-      alert('Please select an item to transfer.');
-      return;
-    }
-
-    if (transferQty > Number(sourceItem.stock)) {
-      alert(`Cannot transfer ${transferQty} ${sourceItem.unit}. Only ${sourceItem.stock} in stock.`);
-      return;
+    if (qty > Number(sourceItem.stock || 0)) {
+      return alert(`Cannot transfer ${qty} ${sourceItem.unit}. Only ${sourceItem.stock} available in ${sourceItem.name}.`);
     }
 
     setLoading(true);
 
     try {
-      // 1. Deduct stock from the source branch item
-      const { error: deductError } = await supabase
+      // 1. Deduct stock from source item
+      const { error: deductErr } = await supabase
         .from('items')
-        .update({ stock: Number(sourceItem.stock) - transferQty })
+        .update({ stock: Number(sourceItem.stock) - qty })
         .eq('id', sourceItem.id);
 
-      if (deductError) throw deductError;
+      if (deductErr) throw deductErr;
 
-      // 2. Check if this item already exists in the destination branch
-      const { data: targetItem, error: findError } = await supabase
+      // 2. Add or update stock at destination branch
+      const { data: destItem } = await supabase
         .from('items')
         .select('*')
-        .eq('branch_id', toBranchId)
+        .eq('branch_id', toBranch)
         .eq('name', sourceItem.name)
         .maybeSingle();
 
-      if (findError) throw findError;
-
-      if (targetItem) {
-        // Update stock in target branch
-        const { error: updateTargetError } = await supabase
+      if (destItem) {
+        await supabase
           .from('items')
-          .update({ stock: Number(targetItem.stock) + transferQty })
-          .eq('id', targetItem.id);
-
-        if (updateTargetError) throw updateTargetError;
+          .update({ stock: Number(destItem.stock || 0) + qty })
+          .eq('id', destItem.id);
       } else {
-        // Create new item entry in target branch
-        const { error: insertTargetError } = await supabase
-          .from('items')
-          .insert([
-            {
-              name: sourceItem.name,
-              unit: sourceItem.unit,
-              rate: sourceItem.rate,
-              stock: transferQty,
-              branch_id: toBranchId
-            }
-          ]);
-
-        if (insertTargetError) throw insertTargetError;
+        await supabase.from('items').insert([
+          {
+            name: sourceItem.name,
+            category: sourceItem.category,
+            unit: sourceItem.unit,
+            stock: qty,
+            rate: sourceItem.rate,
+            branch_id: toBranch
+          }
+        ]);
       }
 
-      // 3. Record transfer in stock_transfers table
-      const { error: logError } = await supabase.from('stock_transfers').insert([
+      // 3. Record transfer entry
+      await supabase.from('stock_transfers').insert([
         {
-          from_branch_id: selectedBranch,
-          to_branch_id: toBranchId,
+          from_branch_id: fromBranch,
+          to_branch_id: toBranch,
           item_name: sourceItem.name,
-          quantity: transferQty,
+          quantity: qty,
           unit: sourceItem.unit,
-          note: note
+          notes: notes.trim() || 'Internal Branch Stock Transfer'
         }
       ]);
 
-      if (logError) throw logError;
-
-      alert(`Transferred ${transferQty} ${sourceItem.unit} of ${sourceItem.name} successfully!`);
+      alert(`Successfully transferred ${qty} ${sourceItem.unit} of "${sourceItem.name}"!`);
       setQuantity('');
-      setNote('');
-      setToBranchId('');
-      fetchSourceItems();
-      fetchTransferHistory();
+      setNotes('');
+      loadBranchItems(fromBranch);
+      loadTransferHistory();
     } catch (err) {
       console.error(err);
-      alert('Error processing transfer: ' + (err.message || 'Unknown error'));
+      alert('Transfer failed: ' + err.message);
     } finally {
       setLoading(false);
     }
   }
 
+  const selectedItemObj = fromItems.find((i) => i.id === selectedItemId);
+
   return (
     <div className="page">
-      <h1>Stock Transfer</h1>
+      <h1>Stock Transfer Between Branches</h1>
 
-      <div className="form-row">
-        <select
-          value={selectedItemId}
-          onChange={(e) => setSelectedItemId(e.target.value)}
-        >
-          {sourceItems.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name} ({item.stock} {item.unit} available)
-            </option>
-          ))}
-          {sourceItems.length === 0 && <option value="">No stock available in this branch</option>}
-        </select>
+      <form onSubmit={handleTransfer} className="form-box">
+        <h2 style={{ fontSize: '15px', marginBottom: '14px', color: '#1e293b' }}>
+          Initiate Stock Transfer
+        </h2>
 
-        <select
-          value={toBranchId}
-          onChange={(e) => setToBranchId(e.target.value)}
-        >
-          <option value="">-- Send to Branch --</option>
-          {destinationBranches.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
+        <div className="form-row">
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
+              FROM BRANCH (SOURCE)
+            </label>
+            <select value={fromBranch} onChange={(e) => setFromBranch(e.target.value)} required>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </div>
 
-        <input
-          type="number"
-          placeholder="Quantity"
-          value={quantity}
-          onChange={(e) => setQuantity(e.target.value)}
-        />
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
+              TO BRANCH (DESTINATION)
+            </label>
+            <select value={toBranch} onChange={(e) => setToBranch(e.target.value)} required>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
 
-        <input
-          type="text"
-          placeholder="Note / Dispatch reason"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
+        <div className="form-row">
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
+              SELECT ITEM
+            </label>
+            <select value={selectedItemId} onChange={(e) => setSelectedItemId(e.target.value)} required>
+              {fromItems.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} ({item.stock} {item.unit} available)
+                </option>
+              ))}
+              {fromItems.length === 0 && <option value="">No items available in this branch</option>}
+            </select>
+          </div>
 
-        <button
-          onClick={handleTransfer}
-          disabled={loading || sourceItems.length === 0}
-        >
-          {loading ? 'Transferring...' : 'Transfer Stock'}
-        </button>
-      </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
+              TRANSFER QUANTITY
+            </label>
+            <input
+              type="number"
+              placeholder={`Max: ${selectedItemObj?.stock || 0}`}
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              required
+            />
+          </div>
 
-      <h1 style={{ fontSize: '16px', marginTop: '24px' }}>Transfer History</h1>
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
+              REASON / NOTES
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. Sent via Chhota Hathi / Tractor"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+
+          <button type="submit" disabled={loading || fromItems.length === 0} style={{ alignSelf: 'flex-end', height: '38px' }}>
+            {loading ? 'Transferring...' : '📦 Transfer Stock'}
+          </button>
+        </div>
+      </form>
+
       <table>
         <thead>
           <tr>
-            <th>Date</th>
-            <th>Item</th>
-            <th>Qty</th>
-            <th>From</th>
-            <th>To</th>
-            <th>Note</th>
+            <th>Date & Time</th>
+            <th>Item Name</th>
+            <th>Quantity</th>
+            <th>From Branch</th>
+            <th>To Branch</th>
+            <th>Notes</th>
           </tr>
         </thead>
         <tbody>
-          {transfers.map((t) => (
+          {transferHistory.map((t) => (
             <tr key={t.id}>
-              <td>{new Date(t.created_at).toLocaleDateString()}</td>
-              <td>{t.item_name}</td>
-              <td>
-                {t.quantity} {t.unit}
-              </td>
-              <td>{t.from_branch?.name || '-'}</td>
-              <td>{t.to_branch?.name || '-'}</td>
-              <td>{t.note || '-'}</td>
+              <td>{new Date(t.created_at).toLocaleString('en-GB')}</td>
+              <td><strong>{t.item_name}</strong></td>
+              <td style={{ fontWeight: 700, color: '#0284c7' }}>{t.quantity} {t.unit}</td>
+              <td>{t.from_branch?.name || 'Jobat'}</td>
+              <td>{t.to_branch?.name || 'Alirajpur'}</td>
+              <td>{t.notes || '-'}</td>
             </tr>
           ))}
-          {transfers.length === 0 && (
+          {transferHistory.length === 0 && (
             <tr>
-              <td colSpan="6" style={{ textAlign: 'center', color: '#888', padding: '16px' }}>
-                No transfers recorded for this branch yet.
+              <td colSpan="6" style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
+                No transfers recorded yet.
               </td>
             </tr>
           )}
