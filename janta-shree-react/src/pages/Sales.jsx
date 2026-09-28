@@ -20,7 +20,7 @@ function Sales() {
   const [activeInvoice, setActiveInvoice] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  const isAllBranches = selectedBranch === 'ALL';
+  const isAllBranches = !selectedBranch || selectedBranch === 'ALL';
 
   useEffect(() => {
     if (selectedBranch) {
@@ -44,11 +44,16 @@ function Sales() {
   }
 
   async function fetchItems() {
-    const { data, error } = await supabase
+    let query = supabase
       .from('items')
       .select('*')
-      .eq('branch_id', selectedBranch)
-      .order('created_at');
+      .order('name');
+
+    if (!isAllBranches) {
+      query = query.or(`branch_id.eq.${selectedBranch},branch_id.is.null`);
+    }
+
+    const { data, error } = await query;
 
     if (!error && data) {
       setItems(data);
@@ -202,8 +207,9 @@ function Sales() {
 
       if (saleError) throw new Error(saleError.message);
 
-      // 3. Update or Add to Parties Ledger (if Credit / Udhaari)
-      const balanceDelta = paymentType === 'Credit' ? grandTotal : 0;
+      // 3. Update or Add to Parties Ledger (Only adds due if paymentType is 'Credit')
+      const isCredit = paymentType === 'Credit';
+      const balanceDelta = isCredit ? grandTotal : 0;
 
       const { data: existingParty } = await supabase
         .from('parties')
@@ -227,6 +233,7 @@ function Sales() {
             phone: customerPhone.trim() || null,
             type: 'customer',
             balance: balanceDelta,
+            balance_type: 'Dr',
             branch_id: selectedBranch
           }
         ]);
@@ -321,6 +328,7 @@ function Sales() {
         />
         <select value={paymentType} onChange={(e) => setPaymentType(e.target.value)}>
           <option value="Cash">Cash</option>
+          <option value="Debit">Debit (Card / UPI / Online)</option>
           <option value="Credit">Credit (Udhaari)</option>
         </select>
       </div>

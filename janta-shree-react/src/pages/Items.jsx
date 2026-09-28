@@ -9,6 +9,7 @@ function Items() {
   const [branches, setBranches] = useState([]);
   const [targetBranchId, setTargetBranchId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   
   // Form state
   const [name, setName] = useState('');
@@ -25,17 +26,15 @@ function Items() {
   }, []);
 
   useEffect(() => {
-    if (selectedBranch) {
-      fetchItems();
-      if (!isAllBranches) {
-        setTargetBranchId(selectedBranch);
-      }
+    fetchItems();
+    if (!isAllBranches && selectedBranch) {
+      setTargetBranchId(selectedBranch);
     }
   }, [selectedBranch]);
 
   async function fetchBranches() {
-    const { data, error } = await supabase.from('branches').select('*').order('name');
-    if (!error && data) {
+    const { data } = await supabase.from('branches').select('*').order('name');
+    if (data) {
       setBranches(data);
       if (data.length > 0 && !targetBranchId) {
         setTargetBranchId(data[0].id);
@@ -49,13 +48,12 @@ function Items() {
       .select('*, branch:branches(name)')
       .order('name');
 
-    // If specific branch is selected, fetch matching branch items OR legacy null-branch items
-    if (!isAllBranches) {
+    // If specific branch selected, show matching branch items OR legacy unassigned items
+    if (selectedBranch && selectedBranch !== 'ALL') {
       query = query.or(`branch_id.eq.${selectedBranch},branch_id.is.null`);
     }
 
     const { data, error } = await query;
-
     if (error) {
       console.error('Error fetching items:', error);
       return;
@@ -65,16 +63,11 @@ function Items() {
 
   async function handleAdd(e) {
     e?.preventDefault();
-    if (!name.trim()) {
-      alert('Please enter an item name.');
-      return;
-    }
+    if (!name.trim()) return alert('Please enter item name.');
 
     const effectiveBranchId = isAllBranches ? targetBranchId : selectedBranch;
-
     if (!effectiveBranchId || effectiveBranchId === 'ALL') {
-      alert('Please select a target branch for this item.');
-      return;
+      return alert('Please select a target branch for this item.');
     }
 
     setLoading(true);
@@ -93,7 +86,6 @@ function Items() {
     setLoading(false);
 
     if (error) {
-      console.error('Error adding item:', error);
       alert('Error adding item: ' + error.message);
       return;
     }
@@ -128,40 +120,67 @@ function Items() {
 
     const { error } = await supabase.from('items').delete().eq('id', id);
     if (error) {
-      console.error('Error deleting item:', error);
       alert('Failed to delete item: ' + error.message);
       return;
     }
     fetchItems();
   }
 
-  const filteredItems = items.filter((item) =>
-    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredItems = items.filter((item) => {
+    const matchesSearch =
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesLowStock = showLowStockOnly ? Number(item.stock || 0) <= 5 : true;
+    return matchesSearch && matchesLowStock;
+  });
+
+  const lowStockCount = items.filter((i) => Number(i.stock || 0) <= 5).length;
 
   return (
     <div className="page">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
-        <h1 style={{ margin: 0 }}>
-          Items & Stock Inventory{' '}
-          {isAllBranches && (
-            <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>
-              (Consolidated All Branches)
-            </span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+        <div>
+          <h1 style={{ margin: 0 }}>
+            Items & Stock Inventory{' '}
+            {isAllBranches && (
+              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>
+                (All Branches View)
+              </span>
+            )}
+          </h1>
+          {lowStockCount > 0 && (
+            <div style={{ fontSize: '12.5px', color: '#dc2626', fontWeight: 600, marginTop: '4px' }}>
+              ⚠️ {lowStockCount} item(s) are in Low Stock (&le; 5 units left)!
+            </div>
           )}
-        </h1>
+        </div>
 
-        <input
-          type="text"
-          placeholder="🔍 Search items or categories..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{ width: '260px', height: '36px', padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
-        />
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={() => setShowLowStockOnly(!showLowStockOnly)}
+            style={{
+              height: '36px',
+              padding: '0 12px',
+              fontSize: '12.5px',
+              backgroundColor: showLowStockOnly ? '#dc2626' : '#f1f5f9',
+              color: showLowStockOnly ? '#fff' : '#475569',
+              border: '1px solid #cbd5e1'
+            }}
+          >
+            {showLowStockOnly ? 'Show All Items' : `⚠️ Show Low Stock Only (${lowStockCount})`}
+          </button>
+          <input
+            type="text"
+            placeholder="🔍 Search item / category..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ width: '220px', height: '36px', padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
+          />
+        </div>
       </div>
 
-      {/* Add New Item Section */}
+      {/* Add New Item */}
       <form onSubmit={handleAdd} className="form-box">
         <h2 style={{ fontSize: '14.5px', marginBottom: '12px', color: '#1e293b' }}>
           + Add New Inventory Item
@@ -223,7 +242,7 @@ function Items() {
         </div>
       </form>
 
-      {/* Inventory Table */}
+      {/* Table */}
       <table>
         <thead>
           <tr>
@@ -237,66 +256,76 @@ function Items() {
           </tr>
         </thead>
         <tbody>
-          {filteredItems.map((item) => (
-            <tr key={item.id}>
-              {isAllBranches && (
+          {filteredItems.map((item) => {
+            const isLowStock = Number(item.stock || 0) <= 5;
+            return (
+              <tr key={item.id} style={{ backgroundColor: isLowStock ? '#fff1f2' : 'inherit' }}>
+                {isAllBranches && (
+                  <td>
+                    <strong>{item.branch?.name || 'Unassigned'}</strong>
+                  </td>
+                )}
                 <td>
-                  <strong>{item.branch?.name || 'Unassigned'}</strong>
+                  <strong>{item.name}</strong>
+                  {isLowStock && (
+                    <span style={{ marginLeft: '8px', fontSize: '11px', color: '#dc2626', fontWeight: 700, backgroundColor: '#fee2e2', padding: '2px 6px', borderRadius: '3px' }}>
+                      LOW STOCK
+                    </span>
+                  )}
                 </td>
-              )}
-              <td><strong>{item.name}</strong></td>
-              <td><span className="badge">{item.category || 'General'}</span></td>
-              <td>{item.unit}</td>
-              <td>
-                <input
-                  type="number"
-                  defaultValue={item.stock}
-                  onBlur={(e) => handleQuickUpdate(item.id, 'stock', e.target.value)}
-                  style={{
-                    width: '90px',
-                    height: '30px',
-                    padding: '2px 8px',
-                    fontWeight: 600,
-                    color: item.stock <= 5 ? '#dc2626' : '#047857',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '4px'
-                  }}
-                  title="Click to edit stock and click outside to save"
-                />
-              </td>
-              <td>
-                <input
-                  type="number"
-                  step="any"
-                  defaultValue={item.rate}
-                  onBlur={(e) => handleQuickUpdate(item.id, 'rate', e.target.value)}
-                  style={{
-                    width: '90px',
-                    height: '30px',
-                    padding: '2px 8px',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '4px'
-                  }}
-                  title="Click to edit rate and click outside to save"
-                />
-              </td>
-              <td style={{ textAlign: 'center' }}>
-                <button
-                  className="delete-btn"
-                  onClick={() => handleDelete(item.id, item.name)}
-                >
-                  Delete
-                </button>
-              </td>
-            </tr>
-          ))}
+                <td><span className="badge">{item.category || 'General'}</span></td>
+                <td>{item.unit}</td>
+                <td>
+                  <input
+                    type="number"
+                    defaultValue={item.stock}
+                    onBlur={(e) => handleQuickUpdate(item.id, 'stock', e.target.value)}
+                    style={{
+                      width: '90px',
+                      height: '30px',
+                      padding: '2px 8px',
+                      fontWeight: 700,
+                      color: isLowStock ? '#dc2626' : '#047857',
+                      border: isLowStock ? '1px solid #f87171' : '1px solid #cbd5e1',
+                      borderRadius: '4px'
+                    }}
+                    title="Click to edit stock and blur to save"
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    step="any"
+                    defaultValue={item.rate}
+                    onBlur={(e) => handleQuickUpdate(item.id, 'rate', e.target.value)}
+                    style={{
+                      width: '90px',
+                      height: '30px',
+                      padding: '2px 8px',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '4px'
+                    }}
+                    title="Click to edit rate and blur to save"
+                  />
+                </td>
+                <td style={{ textAlign: 'center' }}>
+                  <button
+                    className="delete-btn"
+                    onClick={() => handleDelete(item.id, item.name)}
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
           {filteredItems.length === 0 && (
             <tr>
               <td
                 colSpan={isAllBranches ? 7 : 6}
                 style={{ textAlign: 'center', color: '#888', padding: '24px' }}
               >
-                No matching items found.
+                No items found.
               </td>
             </tr>
           )}
