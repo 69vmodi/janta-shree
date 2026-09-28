@@ -5,9 +5,10 @@ import { BranchContext } from '../BranchContext';
 function Purchases() {
   const { selectedBranch } = useContext(BranchContext);
 
-  const currentBranchId = typeof selectedBranch === 'object' && selectedBranch !== null 
-    ? selectedBranch.selectedBranch 
-    : selectedBranch;
+  const currentBranchId =
+    typeof selectedBranch === 'object' && selectedBranch !== null
+      ? selectedBranch.selectedBranch
+      : selectedBranch;
 
   const isAllBranches = !currentBranchId || currentBranchId === 'ALL';
 
@@ -25,6 +26,9 @@ function Purchases() {
   const [purchaseRate, setPurchaseRate] = useState('');
   const [sellingRate, setSellingRate] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Dropdown list control for mobile & desktop
+  const [showItemDropdown, setShowItemDropdown] = useState(false);
 
   useEffect(() => {
     loadBranchItems();
@@ -54,17 +58,12 @@ function Purchases() {
     setPurchases(data || []);
   }
 
-  // Auto-fill when existing item is picked
-  function handleItemNameChange(value) {
-    setItemName(value);
-    const matched = existingItems.find(
-      (i) => i.name.toLowerCase() === value.trim().toLowerCase()
-    );
-    if (matched) {
-      setCategory(matched.category || '');
-      setUnit(matched.unit || 'BAGS');
-      if (matched.rate) setSellingRate(matched.rate);
-    }
+  function handleSelectExistingItem(item) {
+    setItemName(item.name);
+    setCategory(item.category || '');
+    setUnit(item.unit || 'BAGS');
+    if (item.rate) setSellingRate(item.rate);
+    setShowItemDropdown(false);
   }
 
   async function handleAddPurchase(e) {
@@ -100,7 +99,7 @@ function Purchases() {
 
       if (pErr) throw pErr;
 
-      // 2. Check if item already exists in this branch
+      // 2. Automatically update stock for existing item, or create new if not present
       const { data: matchedItem } = await supabase
         .from('items')
         .select('*')
@@ -109,7 +108,6 @@ function Purchases() {
         .maybeSingle();
 
       if (matchedItem) {
-        // Automatically increment stock
         await supabase
           .from('items')
           .update({
@@ -119,7 +117,6 @@ function Purchases() {
           })
           .eq('id', matchedItem.id);
       } else {
-        // Create new item if it does not exist
         await supabase.from('items').insert([
           {
             name: itemName.trim(),
@@ -134,6 +131,7 @@ function Purchases() {
 
       alert(`Purchase of ${qtyNum} ${unit} of "${itemName}" recorded successfully! Stock updated.`);
       setItemName('');
+      setCategory('');
       setQuantity('');
       setPurchaseRate('');
       setSellingRate('');
@@ -147,6 +145,11 @@ function Purchases() {
     }
   }
 
+  // Filter items as user types
+  const filteredDropdownItems = existingItems.filter((i) =>
+    i.name.toLowerCase().includes(itemName.toLowerCase())
+  );
+
   return (
     <div className="page">
       <h1>Purchases / Stock Inward</h1>
@@ -157,7 +160,6 @@ function Purchases() {
             + Record Inward Purchase (Add / Update Stock)
           </h2>
 
-          {/* Invoice Details */}
           <div className="form-row">
             <div>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
@@ -196,27 +198,71 @@ function Purchases() {
             </div>
           </div>
 
-          {/* Item Details with Dropdown / Autocomplete */}
           <div className="form-row">
-            <div style={{ flex: '2 1 220px' }}>
+            {/* Mobile and Laptop Friendly Item Selector */}
+            <div style={{ flex: '2 1 240px', position: 'relative' }}>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
                 ITEM NAME (TYPE OR PICK EXISTING) *
               </label>
               <input
                 type="text"
-                list="inventory-items-list"
-                placeholder="Type or select existing item..."
+                placeholder="Tap to select or type name..."
                 value={itemName}
-                onChange={(e) => handleItemNameChange(e.target.value)}
+                onChange={(e) => {
+                  setItemName(e.target.value);
+                  setShowItemDropdown(true);
+                }}
+                onFocus={() => setShowItemDropdown(true)}
                 required
               />
-              <datalist id="inventory-items-list">
-                {existingItems.map((item) => (
-                  <option key={item.id} value={item.name}>
-                    Current Stock: {item.stock} {item.unit} | Category: {item.category}
-                  </option>
-                ))}
-              </datalist>
+
+              {showItemDropdown && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '4px',
+                    boxShadow: '0 8px 16px rgba(0,0,0,0.15)',
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    zIndex: 50
+                  }}
+                >
+                  {filteredDropdownItems.map((item) => (
+                    <div
+                      key={item.id}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleSelectExistingItem(item);
+                      }}
+                      onTouchEnd={(e) => {
+                        e.preventDefault();
+                        handleSelectExistingItem(item);
+                      }}
+                      style={{
+                        padding: '10px 12px',
+                        borderBottom: '1px solid #f1f5f9',
+                        cursor: 'pointer',
+                        fontSize: '13px'
+                      }}
+                    >
+                      <strong>{item.name}</strong>
+                      <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '8px' }}>
+                        (Stock: {item.stock} {item.unit})
+                      </span>
+                    </div>
+                  ))}
+                  {filteredDropdownItems.length === 0 && (
+                    <div style={{ padding: '10px 12px', fontSize: '12px', color: '#94a3b8' }}>
+                      Press enter to create as a new item: "{itemName}"
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
@@ -225,7 +271,7 @@ function Purchases() {
               </label>
               <input
                 type="text"
-                placeholder="e.g. Cement, Steel"
+                placeholder="e.g. Sanitary, Cement"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
               />
