@@ -14,7 +14,7 @@ function Sales() {
   const [quantity, setQuantity] = useState('');
   const [customRate, setCustomRate] = useState('');
   const [gstRate, setGstRate] = useState(0);
-  const [freight, setFreight] = useState(''); // Freight / Bhada
+  const [freight, setFreight] = useState('');
   const [billLines, setBillLines] = useState([]);
   const [allSalesHistory, setAllSalesHistory] = useState([]);
   const [activeInvoice, setActiveInvoice] = useState(null);
@@ -173,7 +173,7 @@ function Sales() {
     try {
       const nextInvoiceNo = await getNextSequentialBillNumber();
 
-      // 1. Deduct stock
+      // 1. Deduct item stock
       for (const item of items) {
         const totalSold = billLines
           .filter((l) => l.name === item.name)
@@ -207,7 +207,7 @@ function Sales() {
 
       if (saleError) throw new Error(saleError.message);
 
-      // 3. Update or Add to Parties Ledger (Only adds due if paymentType is 'Credit')
+      // 3. Update or Add to Parties Ledger (Credit increases party pending due)
       const isCredit = paymentType === 'Credit';
       const balanceDelta = isCredit ? grandTotal : 0;
 
@@ -239,7 +239,7 @@ function Sales() {
         ]);
       }
 
-      // 4. Open Invoice Modal
+      // 4. Mount Invoice Modal
       setActiveInvoice({
         id: nextInvoiceNo,
         date: new Date().toLocaleDateString('en-GB'),
@@ -273,7 +273,9 @@ function Sales() {
   }
 
   function handlePrint() {
-    window.print();
+    setTimeout(() => {
+      window.print();
+    }, 150);
   }
 
   if (isAllBranches) {

@@ -12,9 +12,11 @@ function Invoices() {
   }, [selectedBranch]);
 
   async function loadInvoices() {
-    let query = supabase.from('sales').select('*, branch:branches(*)').order('created_at', { ascending: false });
-    
-    // Only filter by branch if NOT 'ALL'
+    let query = supabase
+      .from('sales')
+      .select('*, branch:branches(*)')
+      .order('created_at', { ascending: false });
+
     if (selectedBranch && selectedBranch !== 'ALL') {
       query = query.or(`branch_id.eq.${selectedBranch},branch_id.is.null`);
     }
@@ -23,6 +25,12 @@ function Invoices() {
     if (!error && data) {
       setInvoices(data);
     }
+  }
+
+  function handlePrintInvoice() {
+    setTimeout(() => {
+      window.print();
+    }, 150);
   }
 
   return (
@@ -39,7 +47,7 @@ function Invoices() {
             <th>Payment</th>
             <th>Freight (₹)</th>
             <th>Total Amount (₹)</th>
-            <th>Action</th>
+            <th style={{ textAlign: 'center' }}>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -52,19 +60,19 @@ function Invoices() {
               <td><span className="badge">{inv.payment_type || 'Cash'}</span></td>
               <td>₹{inv.freight_charge || 0}</td>
               <td style={{ fontWeight: 700 }}>₹{Number(inv.total || 0).toLocaleString('en-IN')}</td>
-              <td>
+              <td style={{ textAlign: 'center' }}>
                 <button
                   style={{ height: '30px', padding: '0 10px', fontSize: '12px' }}
                   onClick={() => setSelectedInvoice(inv)}
                 >
-                  👁️ View Details
+                  👁️ View & Print
                 </button>
               </td>
             </tr>
           ))}
           {invoices.length === 0 && (
             <tr>
-              <td colSpan="8" style={{ textAlign: 'center', color: '#888', padding: '16px' }}>
+              <td colSpan="8" style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
                 No invoices found for this selection.
               </td>
             </tr>
@@ -72,48 +80,87 @@ function Invoices() {
         </tbody>
       </table>
 
-      {/* View Bill Details Modal */}
+      {/* View & Print Bill Modal */}
       {selectedInvoice && (
         <div className="invoice-modal-overlay">
           <div className="invoice-modal">
-            <h2 style={{ fontSize: '18px', marginBottom: '8px' }}>
-              Invoice: {selectedInvoice.invoice_no || selectedInvoice.id}
-            </h2>
-            <div style={{ fontSize: '13px', color: '#475569', marginBottom: '12px' }}>
-              <div><strong>Billed To:</strong> {selectedInvoice.customer || 'Cash Customer'} ({selectedInvoice.customer_phone || 'No Phone'})</div>
-              <div><strong>Date:</strong> {new Date(selectedInvoice.created_at).toLocaleString('en-GB')}</div>
-              <div><strong>Payment Mode:</strong> {selectedInvoice.payment_type}</div>
-            </div>
+            <div className="invoice-paper" id="printable-bill">
+              <div className="invoice-header">
+                <h2>JANTA SHREE</h2>
+                <div style={{ fontSize: '12px', fontWeight: 600 }}>
+                  Prop: {selectedInvoice.branch?.legal_name || 'SANJAY SHAH'} ({selectedInvoice.branch?.name || 'Janta Shree'})
+                </div>
+                <div style={{ fontSize: '11px', color: '#475569' }}>
+                  {selectedInvoice.branch?.address || 'Madhya Pradesh'}
+                </div>
+                <div style={{ fontSize: '11px', color: '#047857', fontWeight: 700 }}>
+                  GSTIN: {selectedInvoice.branch?.gstin || '23AUZPS6034K2ZV'}
+                </div>
+                <div style={{ marginTop: '8px', fontWeight: 700, fontSize: '12px', borderTop: '1px dashed #cbd5e1', paddingTop: '6px' }}>
+                  TAX INVOICE / CASH MEMO
+                </div>
+              </div>
 
-            <table className="invoice-table">
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th style={{ textAlign: 'center' }}>Qty</th>
-                  <th style={{ textAlign: 'right' }}>Rate</th>
-                  <th style={{ textAlign: 'right' }}>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(selectedInvoice.lines || []).map((l, idx) => (
-                  <tr key={idx}>
-                    <td>{l.name}</td>
-                    <td style={{ textAlign: 'center' }}>{l.qty} {l.unit || ''}</td>
-                    <td style={{ textAlign: 'right' }}>₹{l.rate}</td>
-                    <td style={{ textAlign: 'right' }}>₹{l.amount}</td>
+              <div className="invoice-meta">
+                <div>
+                  <strong>Billed To:</strong> {selectedInvoice.customer || 'Cash Customer'}
+                  {selectedInvoice.customer_phone && <div>Mob: {selectedInvoice.customer_phone}</div>}
+                  <div>Mode: {selectedInvoice.payment_type || 'Cash'}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <strong>Invoice No:</strong> {selectedInvoice.invoice_no || selectedInvoice.id}
+                  <div>Date: {new Date(selectedInvoice.created_at).toLocaleDateString('en-GB')}</div>
+                  <div>Time: {new Date(selectedInvoice.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                </div>
+              </div>
+
+              <table className="invoice-table">
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th style={{ textAlign: 'center' }}>Qty</th>
+                    <th style={{ textAlign: 'right' }}>Rate</th>
+                    <th style={{ textAlign: 'right' }}>GST</th>
+                    <th style={{ textAlign: 'right' }}>Amt</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {(selectedInvoice.lines || []).map((line, idx) => (
+                    <tr key={idx}>
+                      <td>{line.name}</td>
+                      <td style={{ textAlign: 'center' }}>{line.qty} {line.unit || ''}</td>
+                      <td style={{ textAlign: 'right' }}>₹{line.rate}</td>
+                      <td style={{ textAlign: 'right' }}>{line.gstRate || 0}%</td>
+                      <td style={{ textAlign: 'right' }}>₹{Number(line.amount || 0).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, padding: '10px 0', borderTop: '1px dashed #cbd5e1' }}>
-              <span>Grand Total (incl. ₹{selectedInvoice.freight_charge || 0} Freight):</span>
-              <span>₹{selectedInvoice.total}</span>
+              <div style={{ fontSize: '11px', color: '#475569', borderTop: '1px dashed #cbd5e1', paddingTop: '6px' }}>
+                {Number(selectedInvoice.freight_charge || 0) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Freight / Bhada:</span>
+                    <span>₹{Number(selectedInvoice.freight_charge).toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="invoice-total-row">
+                <span>Grand Total:</span>
+                <span>₹{Number(selectedInvoice.total || 0).toLocaleString('en-IN')}</span>
+              </div>
+
+              <div className="invoice-footer">
+                Thank you for shopping with Janta Shree!
+              </div>
             </div>
 
-            <div className="invoice-actions" style={{ marginTop: '16px' }}>
-              <button onClick={() => window.print()}>🖨️ Print</button>
-              <button className="btn-secondary" onClick={() => setSelectedInvoice(null)}>Close</button>
+            <div className="invoice-actions">
+              <button onClick={handlePrintInvoice}>🖨️ Print Bill</button>
+              <button className="btn-secondary" onClick={() => setSelectedInvoice(null)}>
+                Close
+              </button>
             </div>
           </div>
         </div>

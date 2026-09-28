@@ -609,7 +609,7 @@ tbody tr:hover {
 }
 
 /* --------------------------------------------------------------------------
-   Clean Print Mode (Direct Element Isolation)
+   Clean Print Mode (Direct Element Isolation - Fixes Blank Pages)
    -------------------------------------------------------------------------- */
 @media print {
   @page {
@@ -617,7 +617,6 @@ tbody tr:hover {
     size: auto;
   }
 
-  /* Reset layout canvas */
   html,
   body {
     margin: 0 !important;
@@ -625,9 +624,10 @@ tbody tr:hover {
     background: #ffffff !important;
     color: #000000 !important;
     width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
   }
 
-  /* Suppress interface elements */
   .sidebar,
   .brand,
   .branch-select-box,
@@ -640,14 +640,17 @@ tbody tr:hover {
     display: none !important;
   }
 
-  /* Unfold modal container */
   .invoice-modal-overlay {
     position: static !important;
     display: block !important;
     padding: 0 !important;
     margin: 0 !important;
-    background: #ffffff !important;
+    background: transparent !important;
     backdrop-filter: none !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
   }
 
   .invoice-modal {
@@ -659,26 +662,54 @@ tbody tr:hover {
     margin: 0 !important;
     box-shadow: none !important;
     border: none !important;
+    background: transparent !important;
   }
 
-  /* Target bill container */
   #printable-bill {
     display: block !important;
     width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
     color: #000000 !important;
     font-size: 13px !important;
-    font-family: inherit !important;
   }
 
   #printable-bill * {
     color: #000000 !important;
+    visibility: visible !important;
   }
 
   #printable-bill table {
     display: table !important;
     width: 100% !important;
+    border-collapse: collapse !important;
     white-space: normal !important;
     box-shadow: none !important;
     border: none !important;
+    margin-bottom: 10px !important;
+  }
+
+  #printable-bill table thead {
+    display: table-header-group !important;
+    background: transparent !important;
+  }
+
+  #printable-bill table tbody {
+    display: table-row-group !important;
+  }
+
+  #printable-bill table tr {
+    display: table-row !important;
+    page-break-inside: avoid !important;
+  }
+
+  #printable-bill table th,
+  #printable-bill table td {
+    display: table-cell !important;
+    padding: 5px 4px !important;
+    border-bottom: 1px dashed #718096 !important;
+    font-size: 12px !important;
+    color: #000000 !important;
   }
 }
