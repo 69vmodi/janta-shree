@@ -96,7 +96,6 @@ function Parties() {
         .or(`party_id.eq.${party.id},party_name.ilike.${party.name.trim()}`)
         .order('created_at', { ascending: true });
 
-      // Format bills as Debit entries (Goods sold / Bill given)
       const formattedBills = (salesData || []).map((s) => ({
         id: 'bill-' + s.id,
         date: s.created_at,
@@ -108,7 +107,6 @@ function Parties() {
         paymentMode: s.payment_type
       }));
 
-      // Format payments as Credit entries (Payment received / Settled)
       const formattedPayments = (paymentsData || []).map((p) => ({
         id: 'pay-' + p.id,
         date: p.created_at,
@@ -120,7 +118,6 @@ function Parties() {
         paymentMode: p.payment_mode || 'Cash'
       }));
 
-      // Merge and sort chronologically by date
       const combined = [...formattedBills, ...formattedPayments].sort(
         (a, b) => new Date(a.date) - new Date(b.date)
       );
@@ -145,7 +142,6 @@ function Parties() {
     const amt = Number(receivedAmount);
 
     try {
-      // 1. Insert into party_payments table
       await supabase.from('party_payments').insert([
         {
           party_id: activeLedgerParty.id,
@@ -157,7 +153,6 @@ function Parties() {
         }
       ]);
 
-      // 2. Synchronize with Cash & Bank register
       if (currentBranchId && currentBranchId !== 'ALL') {
         await supabase.from('cash_entries').insert([
           {
@@ -170,12 +165,11 @@ function Parties() {
         ]);
       }
 
-      // 3. Update Party Balance
       let curBal = Number(activeLedgerParty.balance || 0);
       let curType = activeLedgerParty.balance_type || 'Dr';
       let signedBal = curType === 'Dr' ? curBal : -curBal;
 
-      signedBal -= amt; // Customer paid -> due amount reduces
+      signedBal -= amt;
 
       const updatedType = signedBal >= 0 ? 'Dr' : 'Cr';
       const updatedBal = Math.abs(signedBal);
@@ -192,7 +186,6 @@ function Parties() {
       setReceivedAmount('');
       setReceivedNote('');
 
-      // Refresh Ledger & Parties List
       const updatedPartyObj = {
         ...activeLedgerParty,
         balance: updatedBal,
@@ -207,6 +200,31 @@ function Parties() {
     } finally {
       setSavingPayment(false);
     }
+  }
+
+  // WhatsApp reminder generator
+  function sendWhatsAppReminder(party) {
+    if (!party.phone) return alert('No phone number saved for this party.');
+    const cleanPhone = party.phone.replace(/[^0-9]/g, '');
+    const phoneWithCode = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+
+    const message = encodeURIComponent(
+      `Namaste ${party.name} ji,\n\nThis is a gentle payment reminder from *JANTA SHREE*.\nYour current pending balance is *₹${Number(party.balance || 0).toLocaleString('en-IN')}*.\n\nPlease clear the balance at your earliest convenience.\n\nThank you!`
+    );
+
+    window.open(`https://wa.me/${phoneWithCode}?text=${message}`, '_blank');
+  }
+
+  // SMS reminder generator
+  function sendSMSReminder(party) {
+    if (!party.phone) return alert('No phone number saved for this party.');
+    const cleanPhone = party.phone.replace(/[^0-9]/g, '');
+
+    const message = encodeURIComponent(
+      `Dear ${party.name}, your outstanding due at JANTA SHREE is Rs. ${Number(party.balance || 0).toLocaleString('en-IN')}. Please arrange payment soon. Thank you.`
+    );
+
+    window.open(`sms:${cleanPhone}?body=${message}`, '_self');
   }
 
   const filteredParties = parties.filter((p) =>
@@ -267,7 +285,7 @@ function Parties() {
         />
       </div>
 
-      {/* Parties Table */}
+      {/* Parties Table with WhatsApp, SMS, and Statement Actions */}
       <table>
         <thead>
           <tr>
@@ -275,41 +293,85 @@ function Parties() {
             <th>Phone</th>
             <th>Balance Type</th>
             <th>Current Balance</th>
+            <th style={{ textAlign: 'center' }}>Send Reminder</th>
             <th style={{ textAlign: 'center' }}>Ledger / Statement</th>
           </tr>
         </thead>
         <tbody>
-          {filteredParties.map((p) => (
-            <tr key={p.id}>
-              <td><strong>{p.name}</strong></td>
-              <td>{p.phone || '-'}</td>
-              <td>
-                <span
-                  className="badge"
-                  style={{
-                    backgroundColor: (p.balance_type || 'Dr') === 'Dr' ? '#fee2e2' : '#dcfce7',
-                    color: (p.balance_type || 'Dr') === 'Dr' ? '#991b1b' : '#166534'
-                  }}
-                >
-                  {p.balance_type === 'Cr' ? 'Advance (Cr)' : 'Pending Due (Dr)'}
-                </span>
-              </td>
-              <td style={{ fontWeight: 700, color: (p.balance_type || 'Dr') === 'Dr' ? '#dc2626' : '#047857' }}>
-                ₹{Number(p.balance || 0).toLocaleString('en-IN')}
-              </td>
-              <td style={{ textAlign: 'center' }}>
-                <button
-                  style={{ height: '30px', padding: '0 12px', fontSize: '12px' }}
-                  onClick={() => handleOpenLedger(p)}
-                >
-                  📖 View Statement
-                </button>
-              </td>
-            </tr>
-          ))}
+          {filteredParties.map((p) => {
+            const hasDue = (p.balance_type || 'Dr') === 'Dr' && Number(p.balance || 0) > 0;
+            return (
+              <tr key={p.id}>
+                <td><strong>{p.name}</strong></td>
+                <td>{p.phone || '-'}</td>
+                <td>
+                  <span
+                    className="badge"
+                    style={{
+                      backgroundColor: (p.balance_type || 'Dr') === 'Dr' ? '#fee2e2' : '#dcfce7',
+                      color: (p.balance_type || 'Dr') === 'Dr' ? '#991b1b' : '#166534'
+                    }}
+                  >
+                    {p.balance_type === 'Cr' ? 'Advance (Cr)' : 'Pending Due (Dr)'}
+                  </span>
+                </td>
+                <td style={{ fontWeight: 700, color: (p.balance_type || 'Dr') === 'Dr' ? '#dc2626' : '#047857' }}>
+                  ₹{Number(p.balance || 0).toLocaleString('en-IN')}
+                </td>
+                <td style={{ textAlign: 'center' }}>
+                  {hasDue && p.phone ? (
+                    <div style={{ display: 'inline-flex', gap: '6px' }}>
+                      <button
+                        onClick={() => sendWhatsAppReminder(p)}
+                        title="Send WhatsApp Reminder"
+                        style={{
+                          height: '28px',
+                          padding: '0 8px',
+                          fontSize: '11.5px',
+                          backgroundColor: '#25D366',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '4px'
+                        }}
+                      >
+                        💬 WhatsApp
+                      </button>
+                      <button
+                        onClick={() => sendSMSReminder(p)}
+                        title="Send SMS"
+                        style={{
+                          height: '28px',
+                          padding: '0 8px',
+                          fontSize: '11.5px',
+                          backgroundColor: '#0284c7',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '4px'
+                        }}
+                      >
+                        📱 SMS
+                      </button>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: '11.5px', color: '#94a3b8' }}>
+                      {!p.phone ? 'No phone' : 'No due'}
+                    </span>
+                  )}
+                </td>
+                <td style={{ textAlign: 'center' }}>
+                  <button
+                    style={{ height: '30px', padding: '0 12px', fontSize: '12px' }}
+                    onClick={() => handleOpenLedger(p)}
+                  >
+                    📖 View Statement
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
           {filteredParties.length === 0 && (
             <tr>
-              <td colSpan="5" style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
+              <td colSpan="6" style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
                 No parties found.
               </td>
             </tr>
@@ -340,6 +402,24 @@ function Parties() {
                 </div>
               </div>
             </div>
+
+            {/* Quick Actions (WhatsApp / SMS Inside Modal) */}
+            {activeLedgerParty.balance_type === 'Dr' && Number(activeLedgerParty.balance || 0) > 0 && activeLedgerParty.phone && (
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                <button
+                  onClick={() => sendWhatsAppReminder(activeLedgerParty)}
+                  style={{ height: '32px', padding: '0 12px', fontSize: '12px', backgroundColor: '#25D366' }}
+                >
+                  💬 Send Due Notice via WhatsApp
+                </button>
+                <button
+                  onClick={() => sendSMSReminder(activeLedgerParty)}
+                  style={{ height: '32px', padding: '0 12px', fontSize: '12px', backgroundColor: '#0284c7' }}
+                >
+                  📱 Send Due Notice via SMS
+                </button>
+              </div>
+            )}
 
             {/* Quick Payment Entry Form */}
             <form onSubmit={handleRecordPayment} style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
