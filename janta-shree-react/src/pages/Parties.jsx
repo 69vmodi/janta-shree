@@ -48,8 +48,8 @@ function Parties() {
 
   async function handleAddParty(e) {
     e.preventDefault();
-    if (!name.trim()) return alert('Party ka naam likhiye.');
-    if (isAllBranches) return alert('Sidebar se pehle Jobat ya Alirajpur branch select karein.');
+    if (!name.trim()) return alert('Please enter party name.');
+    if (isAllBranches) return alert('Please select a specific branch from the sidebar.');
 
     setLoading(true);
     const balNum = Number(openingBalance) || 0;
@@ -96,7 +96,7 @@ function Parties() {
         .or(`party_id.eq.${party.id},party_name.ilike.${party.name.trim()}`)
         .order('created_at', { ascending: true });
 
-      // Format bills as Debit entries (Maal diya)
+      // Format bills as Debit entries (Goods sold / Bill given)
       const formattedBills = (salesData || []).map((s) => ({
         id: 'bill-' + s.id,
         date: s.created_at,
@@ -108,13 +108,13 @@ function Parties() {
         paymentMode: s.payment_type
       }));
 
-      // Format payments as Credit entries (Paisa mila / Jama)
+      // Format payments as Credit entries (Payment received / Settled)
       const formattedPayments = (paymentsData || []).map((p) => ({
         id: 'pay-' + p.id,
         date: p.created_at,
         type: 'PAYMENT',
         ref: 'PAY-' + p.id.slice(0, 5),
-        description: p.notes || 'Payment Received (Jama)',
+        description: p.notes || 'Payment Received',
         debit: 0,
         credit: Number(p.amount || 0),
         paymentMode: p.payment_mode || 'Cash'
@@ -128,17 +128,17 @@ function Parties() {
       setLedgerEntries(combined);
     } catch (err) {
       console.error(err);
-      alert('Ledger load karne me error: ' + err.message);
+      alert('Error loading ledger: ' + err.message);
     } finally {
       setLedgerLoading(false);
     }
   }
 
-  // Save new payment received directly in Party Khata
+  // Save new payment received directly in Party Ledger
   async function handleRecordPayment(e) {
     e.preventDefault();
     if (!receivedAmount || Number(receivedAmount) <= 0) {
-      return alert('Sahi amount daliye.');
+      return alert('Please enter a valid payment amount.');
     }
 
     setSavingPayment(true);
@@ -152,12 +152,12 @@ function Parties() {
           party_name: activeLedgerParty.name,
           amount: amt,
           payment_mode: receivedMode,
-          notes: receivedNote.trim() || 'Payment Received (Jama)',
+          notes: receivedNote.trim() || 'Payment Received',
           branch_id: activeLedgerParty.branch_id || currentBranchId
         }
       ]);
 
-      // 2. Insert into cash_entries register so Cash & Bank is also synchronized
+      // 2. Synchronize with Cash & Bank register
       if (currentBranchId && currentBranchId !== 'ALL') {
         await supabase.from('cash_entries').insert([
           {
@@ -175,7 +175,7 @@ function Parties() {
       let curType = activeLedgerParty.balance_type || 'Dr';
       let signedBal = curType === 'Dr' ? curBal : -curBal;
 
-      signedBal -= amt; // Customer paid -> due reduces
+      signedBal -= amt; // Customer paid -> due amount reduces
 
       const updatedType = signedBal >= 0 ? 'Dr' : 'Cr';
       const updatedBal = Math.abs(signedBal);
@@ -188,7 +188,7 @@ function Parties() {
         })
         .eq('id', activeLedgerParty.id);
 
-      alert(`₹${amt} Jama ho gaya hai!`);
+      alert(`₹${amt} recorded successfully!`);
       setReceivedAmount('');
       setReceivedNote('');
 
@@ -203,7 +203,7 @@ function Parties() {
       loadParties();
     } catch (err) {
       console.error(err);
-      alert('Payment save karne me error: ' + err.message);
+      alert('Error saving payment: ' + err.message);
     } finally {
       setSavingPayment(false);
     }
@@ -222,7 +222,7 @@ function Parties() {
       {!isAllBranches && (
         <form onSubmit={handleAddParty} className="form-box">
           <h2 style={{ fontSize: '15px', marginBottom: '14px', color: '#1e293b' }}>
-            + Nayi Party / Grahak Add Karein
+            + Add New Party / Customer
           </h2>
           <div className="form-row">
             <input
@@ -246,8 +246,8 @@ function Parties() {
               onChange={(e) => setOpeningBalance(e.target.value)}
             />
             <select value={balanceType} onChange={(e) => setBalanceType(e.target.value)}>
-              <option value="Dr">Dr (Baaki / Lena Hai)</option>
-              <option value="Cr">Cr (Advance / Dena Hai)</option>
+              <option value="Dr">Dr (Receivable / Pending Due)</option>
+              <option value="Cr">Cr (Payable / Advance Deposit)</option>
             </select>
             <button type="submit" disabled={loading}>
               {loading ? 'Adding...' : '+ Save Party'}
@@ -260,7 +260,7 @@ function Parties() {
       <div style={{ margin: '14px 0' }}>
         <input
           type="text"
-          placeholder="🔍 Party ke naam ya mobile number se search karein..."
+          placeholder="🔍 Search by party name or phone number..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{ width: '100%', maxWidth: '380px', padding: '9px 12px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
@@ -275,7 +275,7 @@ function Parties() {
             <th>Phone</th>
             <th>Balance Type</th>
             <th>Current Balance</th>
-            <th style={{ textAlign: 'center' }}>Khata / Statement</th>
+            <th style={{ textAlign: 'center' }}>Ledger / Statement</th>
           </tr>
         </thead>
         <tbody>
@@ -310,7 +310,7 @@ function Parties() {
           {filteredParties.length === 0 && (
             <tr>
               <td colSpan="5" style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
-                Koi party nahi mili.
+                No parties found.
               </td>
             </tr>
           )}
@@ -324,11 +324,11 @@ function Parties() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #cbd5e1', paddingBottom: '12px', marginBottom: '14px' }}>
               <div>
                 <h2 style={{ fontSize: '18px', color: '#0f172a', margin: 0 }}>
-                  📖 Khata Statement: {activeLedgerParty.name}
+                  📖 Statement of Account: {activeLedgerParty.name}
                 </h2>
                 {activeLedgerParty.phone && (
                   <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                    Mob: {activeLedgerParty.phone}
+                    Phone: {activeLedgerParty.phone}
                   </div>
                 )}
               </div>
@@ -336,7 +336,7 @@ function Parties() {
                 <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase' }}>Current Balance</span>
                 <div style={{ fontSize: '18px', fontWeight: 800, color: activeLedgerParty.balance_type === 'Dr' ? '#dc2626' : '#047857' }}>
                   ₹{Number(activeLedgerParty.balance || 0).toLocaleString('en-IN')}{' '}
-                  <span style={{ fontSize: '12px' }}>({activeLedgerParty.balance_type === 'Dr' ? 'Lena Hai' : 'Advance'})</span>
+                  <span style={{ fontSize: '12px' }}>({activeLedgerParty.balance_type === 'Dr' ? 'Receivable' : 'Advance'})</span>
                 </div>
               </div>
             </div>
@@ -344,7 +344,7 @@ function Parties() {
             {/* Quick Payment Entry Form */}
             <form onSubmit={handleRecordPayment} style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
               <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#1e293b', marginBottom: '8px' }}>
-                + Party Se Payment Mila (Jama Entry)
+                + Record Payment Received from Party
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
                 <input
@@ -377,7 +377,7 @@ function Parties() {
                   disabled={savingPayment}
                   style={{ height: '34px', padding: '0 14px', fontSize: '12.5px' }}
                 >
-                  {savingPayment ? 'Saving...' : '✓ Jama Karein'}
+                  {savingPayment ? 'Saving...' : '✓ Save Payment'}
                 </button>
               </div>
             </form>
@@ -385,7 +385,7 @@ function Parties() {
             {/* Date-wise Statement Table */}
             {ledgerLoading ? (
               <div style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
-                Statement load ho raha hai...
+                Loading statement...
               </div>
             ) : (
               <table>
@@ -395,8 +395,8 @@ function Parties() {
                     <th>Ref / Bill No</th>
                     <th>Description</th>
                     <th>Mode</th>
-                    <th style={{ textAlign: 'right', color: '#dc2626' }}>Bill Diya (Dr)</th>
-                    <th style={{ textAlign: 'right', color: '#047857' }}>Payment Mila (Cr)</th>
+                    <th style={{ textAlign: 'right', color: '#dc2626' }}>Bill Given (Dr)</th>
+                    <th style={{ textAlign: 'right', color: '#047857' }}>Payment Received (Cr)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -423,7 +423,7 @@ function Parties() {
                   {ledgerEntries.length === 0 && (
                     <tr>
                       <td colSpan="6" style={{ textAlign: 'center', color: '#888', padding: '24px' }}>
-                        Is party ka abhi tak koi bill ya payment record nahi hai.
+                        No bills or payment records found for this party yet.
                       </td>
                     </tr>
                   )}
