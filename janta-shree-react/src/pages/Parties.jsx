@@ -82,14 +82,12 @@ function Parties() {
     setLedgerLoading(true);
 
     try {
-      // 1. Fetch Invoices/Bills billed to this customer
       const { data: salesData } = await supabase
         .from('sales')
         .select('*')
         .ilike('customer', party.name.trim())
         .order('created_at', { ascending: true });
 
-      // 2. Fetch Payments received from this customer
       const { data: paymentsData } = await supabase
         .from('party_payments')
         .select('*')
@@ -202,23 +200,51 @@ function Parties() {
     }
   }
 
-  // WhatsApp reminder generator
-  function sendWhatsAppReminder(party) {
-    if (!party.phone) return alert('No phone number saved for this party.');
-    const cleanPhone = party.phone.replace(/[^0-9]/g, '');
+  // Quick edit or add phone number for a party
+  async function handleUpdatePhone(party) {
+    const inputPhone = prompt(`Enter mobile number for "${party.name}":`, party.phone || '');
+    if (inputPhone === null) return null;
+    const cleanPhone = inputPhone.trim();
+
+    if (cleanPhone) {
+      await supabase
+        .from('parties')
+        .update({ phone: cleanPhone })
+        .eq('id', party.id);
+      loadParties();
+    }
+    return cleanPhone;
+  }
+
+  // WhatsApp reminder generator with phone prompt fallback
+  async function sendWhatsAppReminder(party) {
+    let targetPhone = party.phone;
+
+    if (!targetPhone) {
+      targetPhone = await handleUpdatePhone(party);
+      if (!targetPhone) return;
+    }
+
+    const cleanPhone = targetPhone.replace(/[^0-9]/g, '');
     const phoneWithCode = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
 
     const message = encodeURIComponent(
-      `Namaste ${party.name} ji,\n\nThis is a gentle payment reminder from *JANTA SHREE*.\nYour current pending balance is *₹${Number(party.balance || 0).toLocaleString('en-IN')}*.\n\nPlease clear the balance at your earliest convenience.\n\nThank you!`
+      `Namaste ${party.name} ji,\n\nThis is a gentle payment reminder from *JANTA SHREE*.\nYour current pending balance (Udhari) is *₹${Number(party.balance || 0).toLocaleString('en-IN')}*.\n\nPlease clear the balance at your earliest convenience.\n\nThank you!`
     );
 
     window.open(`https://wa.me/${phoneWithCode}?text=${message}`, '_blank');
   }
 
-  // SMS reminder generator
-  function sendSMSReminder(party) {
-    if (!party.phone) return alert('No phone number saved for this party.');
-    const cleanPhone = party.phone.replace(/[^0-9]/g, '');
+  // SMS reminder generator with phone prompt fallback
+  async function sendSMSReminder(party) {
+    let targetPhone = party.phone;
+
+    if (!targetPhone) {
+      targetPhone = await handleUpdatePhone(party);
+      if (!targetPhone) return;
+    }
+
+    const cleanPhone = targetPhone.replace(/[^0-9]/g, '');
 
     const message = encodeURIComponent(
       `Dear ${party.name}, your outstanding due at JANTA SHREE is Rs. ${Number(party.balance || 0).toLocaleString('en-IN')}. Please arrange payment soon. Thank you.`
@@ -285,7 +311,7 @@ function Parties() {
         />
       </div>
 
-      {/* Parties Table with WhatsApp, SMS, and Statement Actions */}
+      {/* Parties Table */}
       <table>
         <thead>
           <tr>
@@ -293,7 +319,7 @@ function Parties() {
             <th>Phone</th>
             <th>Balance Type</th>
             <th>Current Balance</th>
-            <th style={{ textAlign: 'center' }}>Send Reminder</th>
+            <th style={{ textAlign: 'center' }}>Send Reminder (WhatsApp / SMS)</th>
             <th style={{ textAlign: 'center' }}>Ledger / Statement</th>
           </tr>
         </thead>
@@ -303,7 +329,26 @@ function Parties() {
             return (
               <tr key={p.id}>
                 <td><strong>{p.name}</strong></td>
-                <td>{p.phone || '-'}</td>
+                <td>
+                  {p.phone ? (
+                    <span>{p.phone}</span>
+                  ) : (
+                    <button
+                      onClick={() => handleUpdatePhone(p)}
+                      style={{
+                        height: '24px',
+                        padding: '0 8px',
+                        fontSize: '11px',
+                        backgroundColor: '#f1f5f9',
+                        color: '#0284c7',
+                        border: '1px dashed #cbd5e1',
+                        borderRadius: '4px'
+                      }}
+                    >
+                      + Add Phone
+                    </button>
+                  )}
+                </td>
                 <td>
                   <span
                     className="badge"
@@ -319,15 +364,16 @@ function Parties() {
                   ₹{Number(p.balance || 0).toLocaleString('en-IN')}
                 </td>
                 <td style={{ textAlign: 'center' }}>
-                  {hasDue && p.phone ? (
+                  {hasDue ? (
                     <div style={{ display: 'inline-flex', gap: '6px' }}>
                       <button
                         onClick={() => sendWhatsAppReminder(p)}
                         title="Send WhatsApp Reminder"
                         style={{
-                          height: '28px',
-                          padding: '0 8px',
-                          fontSize: '11.5px',
+                          height: '30px',
+                          padding: '0 10px',
+                          fontSize: '12px',
+                          fontWeight: 600,
                           backgroundColor: '#25D366',
                           color: '#fff',
                           border: 'none',
@@ -338,11 +384,12 @@ function Parties() {
                       </button>
                       <button
                         onClick={() => sendSMSReminder(p)}
-                        title="Send SMS"
+                        title="Send Direct SMS"
                         style={{
-                          height: '28px',
-                          padding: '0 8px',
-                          fontSize: '11.5px',
+                          height: '30px',
+                          padding: '0 10px',
+                          fontSize: '12px',
+                          fontWeight: 600,
                           backgroundColor: '#0284c7',
                           color: '#fff',
                           border: 'none',
@@ -353,9 +400,7 @@ function Parties() {
                       </button>
                     </div>
                   ) : (
-                    <span style={{ fontSize: '11.5px', color: '#94a3b8' }}>
-                      {!p.phone ? 'No phone' : 'No due'}
-                    </span>
+                    <span style={{ fontSize: '11.5px', color: '#94a3b8' }}>No Pending Due</span>
                   )}
                 </td>
                 <td style={{ textAlign: 'center' }}>
@@ -388,11 +433,18 @@ function Parties() {
                 <h2 style={{ fontSize: '18px', color: '#0f172a', margin: 0 }}>
                   📖 Statement of Account: {activeLedgerParty.name}
                 </h2>
-                {activeLedgerParty.phone && (
-                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                    Phone: {activeLedgerParty.phone}
-                  </div>
-                )}
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                  Phone: {activeLedgerParty.phone || 'Not added'}{' '}
+                  <button
+                    onClick={async () => {
+                      const newP = await handleUpdatePhone(activeLedgerParty);
+                      if (newP) setActiveLedgerParty({ ...activeLedgerParty, phone: newP });
+                    }}
+                    style={{ background: 'none', border: 'none', color: '#0284c7', textDecoration: 'underline', padding: 0, height: 'auto', fontSize: '11px', cursor: 'pointer' }}
+                  >
+                    (Edit)
+                  </button>
+                </div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase' }}>Current Balance</span>
@@ -404,19 +456,19 @@ function Parties() {
             </div>
 
             {/* Quick Actions (WhatsApp / SMS Inside Modal) */}
-            {activeLedgerParty.balance_type === 'Dr' && Number(activeLedgerParty.balance || 0) > 0 && activeLedgerParty.phone && (
+            {activeLedgerParty.balance_type === 'Dr' && Number(activeLedgerParty.balance || 0) > 0 && (
               <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
                 <button
                   onClick={() => sendWhatsAppReminder(activeLedgerParty)}
                   style={{ height: '32px', padding: '0 12px', fontSize: '12px', backgroundColor: '#25D366' }}
                 >
-                  💬 Send Due Notice via WhatsApp
+                  💬 Send Reminder via WhatsApp
                 </button>
                 <button
                   onClick={() => sendSMSReminder(activeLedgerParty)}
                   style={{ height: '32px', padding: '0 12px', fontSize: '12px', backgroundColor: '#0284c7' }}
                 >
-                  📱 Send Due Notice via SMS
+                  📱 Send Reminder via SMS
                 </button>
               </div>
             )}
