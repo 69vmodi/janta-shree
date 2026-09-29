@@ -164,8 +164,8 @@ function Parties() {
       }
 
       let curBal = Number(activeLedgerParty.balance || 0);
-      let curType = activeLedgerParty.balance_type || 'Dr';
-      let signedBal = curType === 'Dr' ? curBal : -curBal;
+      let curType = (activeLedgerParty.balance_type || 'Dr').toUpperCase();
+      let signedBal = curType === 'DR' ? curBal : -curBal;
 
       signedBal -= amt;
 
@@ -319,13 +319,16 @@ function Parties() {
             <th>Phone</th>
             <th>Balance Type</th>
             <th>Current Balance</th>
-            <th style={{ textAlign: 'center' }}>Send Reminder (WhatsApp / SMS)</th>
+            <th style={{ textAlign: 'center' }}>Send Reminder</th>
             <th style={{ textAlign: 'center' }}>Ledger / Statement</th>
           </tr>
         </thead>
         <tbody>
           {filteredParties.map((p) => {
-            const hasDue = (p.balance_type || 'Dr') === 'Dr' && Number(p.balance || 0) > 0;
+            const balVal = Number(p.balance || 0);
+            const bType = (p.balance_type || 'Dr').toUpperCase();
+            const isAdvance = bType === 'CR';
+
             return (
               <tr key={p.id}>
                 <td><strong>{p.name}</strong></td>
@@ -342,7 +345,8 @@ function Parties() {
                         backgroundColor: '#f1f5f9',
                         color: '#0284c7',
                         border: '1px dashed #cbd5e1',
-                        borderRadius: '4px'
+                        borderRadius: '4px',
+                        cursor: 'pointer'
                       }}
                     >
                       + Add Phone
@@ -353,55 +357,54 @@ function Parties() {
                   <span
                     className="badge"
                     style={{
-                      backgroundColor: (p.balance_type || 'Dr') === 'Dr' ? '#fee2e2' : '#dcfce7',
-                      color: (p.balance_type || 'Dr') === 'Dr' ? '#991b1b' : '#166534'
+                      backgroundColor: isAdvance ? '#dcfce7' : '#fee2e2',
+                      color: isAdvance ? '#166534' : '#991b1b'
                     }}
                   >
-                    {p.balance_type === 'Cr' ? 'Advance (Cr)' : 'Pending Due (Dr)'}
+                    {isAdvance ? 'Advance (Cr)' : 'Pending Due (Dr)'}
                   </span>
                 </td>
-                <td style={{ fontWeight: 700, color: (p.balance_type || 'Dr') === 'Dr' ? '#dc2626' : '#047857' }}>
-                  ₹{Number(p.balance || 0).toLocaleString('en-IN')}
+                <td style={{ fontWeight: 700, color: isAdvance ? '#047857' : '#dc2626' }}>
+                  ₹{balVal.toLocaleString('en-IN')}
                 </td>
                 <td style={{ textAlign: 'center' }}>
-                  {hasDue ? (
-                    <div style={{ display: 'inline-flex', gap: '6px' }}>
-                      <button
-                        onClick={() => sendWhatsAppReminder(p)}
-                        title="Send WhatsApp Reminder"
-                        style={{
-                          height: '30px',
-                          padding: '0 10px',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          backgroundColor: '#25D366',
-                          color: '#fff',
-                          border: 'none',
-                          borderRadius: '4px'
-                        }}
-                      >
-                        💬 WhatsApp
-                      </button>
-                      <button
-                        onClick={() => sendSMSReminder(p)}
-                        title="Send Direct SMS"
-                        style={{
-                          height: '30px',
-                          padding: '0 10px',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          backgroundColor: '#0284c7',
-                          color: '#fff',
-                          border: 'none',
-                          borderRadius: '4px'
-                        }}
-                      >
-                        📱 SMS
-                      </button>
-                    </div>
-                  ) : (
-                    <span style={{ fontSize: '11.5px', color: '#94a3b8' }}>No Pending Due</span>
-                  )}
+                  {/* WhatsApp and SMS Buttons are ALWAYS visible for any party with balance */}
+                  <div style={{ display: 'inline-flex', gap: '6px' }}>
+                    <button
+                      onClick={() => sendWhatsAppReminder(p)}
+                      title="Send WhatsApp Reminder"
+                      style={{
+                        height: '30px',
+                        padding: '0 10px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        backgroundColor: '#25D366',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      💬 WhatsApp
+                    </button>
+                    <button
+                      onClick={() => sendSMSReminder(p)}
+                      title="Send Direct SMS"
+                      style={{
+                        height: '30px',
+                        padding: '0 10px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        backgroundColor: '#0284c7',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      📱 SMS
+                    </button>
+                  </div>
                 </td>
                 <td style={{ textAlign: 'center' }}>
                   <button
@@ -448,30 +451,28 @@ function Parties() {
               </div>
               <div style={{ textAlign: 'right' }}>
                 <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase' }}>Current Balance</span>
-                <div style={{ fontSize: '18px', fontWeight: 800, color: activeLedgerParty.balance_type === 'Dr' ? '#dc2626' : '#047857' }}>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: (activeLedgerParty.balance_type || '').toUpperCase() === 'CR' ? '#047857' : '#dc2626' }}>
                   ₹{Number(activeLedgerParty.balance || 0).toLocaleString('en-IN')}{' '}
-                  <span style={{ fontSize: '12px' }}>({activeLedgerParty.balance_type === 'Dr' ? 'Receivable' : 'Advance'})</span>
+                  <span style={{ fontSize: '12px' }}>({(activeLedgerParty.balance_type || '').toUpperCase() === 'CR' ? 'Advance' : 'Receivable'})</span>
                 </div>
               </div>
             </div>
 
             {/* Quick Actions (WhatsApp / SMS Inside Modal) */}
-            {activeLedgerParty.balance_type === 'Dr' && Number(activeLedgerParty.balance || 0) > 0 && (
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
-                <button
-                  onClick={() => sendWhatsAppReminder(activeLedgerParty)}
-                  style={{ height: '32px', padding: '0 12px', fontSize: '12px', backgroundColor: '#25D366' }}
-                >
-                  💬 Send Reminder via WhatsApp
-                </button>
-                <button
-                  onClick={() => sendSMSReminder(activeLedgerParty)}
-                  style={{ height: '32px', padding: '0 12px', fontSize: '12px', backgroundColor: '#0284c7' }}
-                >
-                  📱 Send Reminder via SMS
-                </button>
-              </div>
-            )}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+              <button
+                onClick={() => sendWhatsAppReminder(activeLedgerParty)}
+                style={{ height: '32px', padding: '0 12px', fontSize: '12px', backgroundColor: '#25D366', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                💬 Send Reminder via WhatsApp
+              </button>
+              <button
+                onClick={() => sendSMSReminder(activeLedgerParty)}
+                style={{ height: '32px', padding: '0 12px', fontSize: '12px', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                📱 Send Reminder via SMS
+              </button>
+            </div>
 
             {/* Quick Payment Entry Form */}
             <form onSubmit={handleRecordPayment} style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
