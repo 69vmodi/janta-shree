@@ -48,8 +48,8 @@ function Parties() {
 
   async function handleAddParty(e) {
     e.preventDefault();
-    if (!name.trim()) return alert('Please enter party name.');
-    if (isAllBranches) return alert('Please select a specific branch from the sidebar.');
+    if (!name.trim()) return alert('कृपया पार्टी का नाम दर्ज करें।');
+    if (isAllBranches) return alert('कृपया साइडबार से ब्रांच (Jobat या Alirajpur) चुनें।');
 
     setLoading(true);
     const balNum = Number(openingBalance) || 0;
@@ -67,7 +67,7 @@ function Parties() {
 
     setLoading(false);
     if (error) {
-      alert('Error adding party: ' + error.message);
+      alert('Error: ' + error.message);
     } else {
       setName('');
       setPhone('');
@@ -76,12 +76,12 @@ function Parties() {
     }
   }
 
-  // Delete Party
+  // Delete Party permanently
   async function handleDeleteParty(party) {
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete "${party.name}"? This will remove the party and their khata records.`
+    const isSure = window.confirm(
+      `क्या आप सचमुच "${party.name}" को हटाना चाहते हैं? यह पार्टी हमेशा के लिए डिलीट हो जाएगी।`
     );
-    if (!confirmDelete) return;
+    if (!isSure) return;
 
     try {
       const { error } = await supabase
@@ -91,11 +91,11 @@ function Parties() {
 
       if (error) throw error;
 
-      alert(`Party "${party.name}" deleted successfully.`);
+      alert(`पार्टी "${party.name}" सफलतापूर्वक डिलीट कर दी गई है।`);
       loadParties();
     } catch (err) {
       console.error(err);
-      alert('Failed to delete party: ' + err.message);
+      alert('Delete failed: ' + err.message);
     }
   }
 
@@ -122,7 +122,7 @@ function Parties() {
         date: s.created_at,
         type: 'BILL',
         ref: s.invoice_no || `JS-${s.id.slice(0, 5)}`,
-        description: `Bill Generated (${s.payment_type || 'Sale'})`,
+        description: `बिल बना (${s.payment_type || 'Sale'})`,
         debit: Number(s.total || 0),
         credit: 0,
         paymentMode: s.payment_type
@@ -133,7 +133,7 @@ function Parties() {
         date: p.created_at,
         type: 'PAYMENT',
         ref: 'PAY-' + p.id.slice(0, 5),
-        description: p.notes || 'Payment Received',
+        description: p.notes || 'भुगतान प्राप्त (जमा)',
         debit: 0,
         credit: Number(p.amount || 0),
         paymentMode: p.payment_mode || 'Cash'
@@ -156,7 +156,7 @@ function Parties() {
   async function handleRecordPayment(e) {
     e.preventDefault();
     if (!receivedAmount || Number(receivedAmount) <= 0) {
-      return alert('Please enter a valid payment amount.');
+      return alert('कृपया सही राशि दर्ज करें।');
     }
 
     setSavingPayment(true);
@@ -169,7 +169,7 @@ function Parties() {
           party_name: activeLedgerParty.name,
           amount: amt,
           payment_mode: receivedMode,
-          notes: receivedNote.trim() || 'Payment Received',
+          notes: receivedNote.trim() || 'भुगतान प्राप्त (जमा)',
           branch_id: activeLedgerParty.branch_id || currentBranchId
         }
       ]);
@@ -180,7 +180,7 @@ function Parties() {
             type: 'IN',
             amount: amt,
             mode: receivedMode,
-            description: `Payment received from party: ${activeLedgerParty.name}`,
+            description: `पार्टी से पेमेंट आया: ${activeLedgerParty.name}`,
             branch_id: activeLedgerParty.branch_id || currentBranchId
           }
         ]);
@@ -203,7 +203,7 @@ function Parties() {
         })
         .eq('id', activeLedgerParty.id);
 
-      alert(`₹${amt} recorded successfully!`);
+      alert(`₹${amt} जमा कर लिया गया है!`);
       setReceivedAmount('');
       setReceivedNote('');
 
@@ -217,15 +217,14 @@ function Parties() {
       loadParties();
     } catch (err) {
       console.error(err);
-      alert('Error saving payment: ' + err.message);
+      alert('Error: ' + err.message);
     } finally {
       setSavingPayment(false);
     }
   }
 
-  // Quick edit or add phone number for a party
   async function handleUpdatePhone(party) {
-    const inputPhone = prompt(`Enter mobile number for "${party.name}":`, party.phone || '');
+    const inputPhone = prompt(`पार्टी "${party.name}" का 10 अंकों का मोबाइल नंबर दर्ज करें:`, party.phone || '');
     if (inputPhone === null) return null;
     const cleanPhone = inputPhone.trim();
 
@@ -239,7 +238,7 @@ function Parties() {
     return cleanPhone;
   }
 
-  // Hindi WhatsApp Reminder
+  // Pure Hindi WhatsApp Reminder
   async function sendWhatsAppReminder(party) {
     let targetPhone = party.phone;
 
@@ -252,13 +251,13 @@ function Parties() {
     const phoneWithCode = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
 
     const message = encodeURIComponent(
-      `नमस्ते ${party.name} जी,\n\nजनता श्री (Janta Shree) से आपका बकाया भुगतान (उधारी) *₹${Number(party.balance || 0).toLocaleString('en-IN')}* बाकी है।\n\nकृपया जल्द से जल्द भुगतान करने का कष्ट करें।\n\nधन्यवाद!`
+      `नमस्ते ${party.name} जी,\n\nजनता श्री (Janta Shree) से आपका बकाया भुगतान (उधारी) ₹${Number(party.balance || 0).toLocaleString('en-IN')} बाकी है।\n\nकृपया जल्द से जल्द भुगतान करने का कष्ट करें।\n\nधन्यवाद!`
     );
 
     window.open(`https://wa.me/${phoneWithCode}?text=${message}`, '_blank');
   }
 
-  // Hindi SMS Reminder
+  // Pure Hindi SMS Reminder
   async function sendSMSReminder(party) {
     let targetPhone = party.phone;
 
@@ -334,7 +333,7 @@ function Parties() {
         />
       </div>
 
-      {/* Parties Table */}
+      {/* Parties Table with WhatsApp, SMS, Statement, and Delete Actions */}
       <table>
         <thead>
           <tr>
@@ -440,9 +439,18 @@ function Parties() {
                 <td style={{ textAlign: 'center' }}>
                   <button
                     onClick={() => handleDeleteParty(p)}
-                    className="delete-btn"
+                    style={{
+                      height: '28px',
+                      padding: '0 10px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      backgroundColor: '#fee2e2',
+                      color: '#dc2626',
+                      border: '1px solid #f87171',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
                     title="Delete Party"
-                    style={{ height: '28px', padding: '0 10px', fontSize: '12px' }}
                   >
                     🗑️ Delete
                   </button>
