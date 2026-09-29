@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, NavLink, useNavigate } from 'react-router-dom';
+import { useContext } from 'react';
 import { supabase } from './supabaseClient';
 import { BranchContext } from './BranchContext';
 
-import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Items from './pages/Items';
 import Transfers from './pages/Transfers';
@@ -11,70 +10,67 @@ import Purchases from './pages/Purchases';
 import Sales from './pages/Sales';
 import Invoices from './pages/Invoices';
 import Parties from './pages/Parties';
-import CashBank from './pages/CashBank';
 import Reports from './pages/Reports';
-import Login from './pages/Login';
 
-function App() {
-  const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true);
+function App({ session }) {
+  const { selectedBranch, setSelectedBranch, branches } = useContext(BranchContext);
+  const navigate = useNavigate();
 
-  // Read immediately from localStorage
-  const [selectedBranch, setSelectedBranch] = useState(() => {
-    return localStorage.getItem('janta_selected_branch') || 'ALL';
-  });
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const handleBranchChange = (branchId) => {
-    setSelectedBranch(branchId);
-    localStorage.setItem('janta_selected_branch', branchId);
-  };
-
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#0f172a', color: '#fff' }}>
-        Loading Janta Shree...
-      </div>
-    );
-  }
-
-  if (!session) {
-    return <Login onLoginSuccess={() => setLoading(false)} />;
+  async function handleLogout() {
+    await supabase.auth.signOut();
   }
 
   return (
-    <BranchContext.Provider value={{ selectedBranch, changeBranch: handleBranchChange }}>
-      <div className="layout">
-        <Sidebar onBranchSelect={handleBranchChange} currentBranch={selectedBranch} />
-        <main className="content">
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/items" element={<Items />} />
-            <Route path="/transfers" element={<Transfers />} />
-            <Route path="/purchases" element={<Purchases />} />
-            <Route path="/sales" element={<Sales />} />
-            <Route path="/invoices" element={<Invoices />} />
-            <Route path="/parties" element={<Parties />} />
-            <Route path="/cash-bank" element={<CashBank />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
-        </main>
-      </div>
-    </BranchContext.Provider>
+    <div className="layout">
+      <aside className="sidebar">
+        <div className="brand">JANTA SHREE</div>
+
+        <div className="branch-select-box">
+          <label>Branch View</label>
+          <select
+            value={selectedBranch}
+            onChange={(e) => setSelectedBranch(e.target.value)}
+          >
+            <option value="ALL">🏢 Consolidated (All)</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                📍 {b.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <nav className="nav-links">
+          <NavLink to="/" end>Dashboard</NavLink>
+          <NavLink to="/items">Items & Stock</NavLink>
+          <NavLink to="/transfers">Stock Transfer</NavLink>
+          <NavLink to="/purchases">Purchases</NavLink>
+          <NavLink to="/sales">Sales / Billing</NavLink>
+          <NavLink to="/invoices">Invoices / Bills</NavLink>
+          <NavLink to="/parties">Parties</NavLink>
+          <NavLink to="/reports">Reports</NavLink>
+        </nav>
+
+        <div className="sidebar-footer">
+          <button className="logout-btn" onClick={handleLogout}>
+            Logout
+          </button>
+        </div>
+      </aside>
+
+      <main className="content">
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/items" element={<Items />} />
+          <Route path="/transfers" element={<Transfers />} />
+          <Route path="/purchases" element={<Purchases />} />
+          <Route path="/sales" element={<Sales />} />
+          <Route path="/invoices" element={<Invoices />} />
+          <Route path="/parties" element={<Parties />} />
+          <Route path="/reports" element={<Reports />} />
+        </Routes>
+      </main>
+    </div>
   );
 }
 
