@@ -3,7 +3,6 @@ import { supabase } from './supabaseClient';
 
 export const BranchContext = createContext();
 
-// Fallback branches so they never disappear from the dropdown
 const DEFAULT_BRANCHES = [
   { id: '4b4c5e6c-87f6-46fc-892e-efb4e9a39fc8', name: 'Sanjay Shah Jobat' },
   { id: 'alirajpur-default-id', name: 'Sanjay Shah Alirajpur' }
@@ -11,7 +10,17 @@ const DEFAULT_BRANCHES = [
 
 export function BranchProvider({ children }) {
   const [branches, setBranches] = useState(DEFAULT_BRANCHES);
-  const [selectedBranch, setSelectedBranch] = useState('ALL');
+  
+  // 1. Initialize state from localStorage so it never resets to 'ALL' on refresh
+  const [selectedBranch, setSelectedBranchState] = useState(() => {
+    return localStorage.getItem('janta_shree_selected_branch') || 'ALL';
+  });
+
+  // 2. Custom setter that updates both React state and localStorage
+  const setSelectedBranch = (branchId) => {
+    setSelectedBranchState(branchId);
+    localStorage.setItem('janta_shree_selected_branch', branchId);
+  };
 
   useEffect(() => {
     loadBranches();
@@ -26,7 +35,6 @@ export function BranchProvider({ children }) {
 
       if (!error && data && data.length > 0) {
         setBranches(data);
-        // Default to first branch if desired, or keep as 'ALL'
       } else {
         console.warn('Using fallback branches:', error?.message);
         setBranches(DEFAULT_BRANCHES);
