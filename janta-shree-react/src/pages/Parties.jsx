@@ -5,32 +5,40 @@ import { BranchContext } from '../BranchContext';
 function Parties() {
   const { selectedBranch } = useContext(BranchContext);
 
+  const currentBranchId =
+    typeof selectedBranch === 'object' && selectedBranch !== null
+      ? selectedBranch.selectedBranch
+      : selectedBranch;
+
+  const isAllBranches = !currentBranchId || currentBranchId === 'ALL';
+
   const [parties, setParties] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  // New party form
+  const [searchTerm, setSearchTerm] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
-  const [balance, setBalance] = useState('');
+  const [openingBalance, setOpeningBalance] = useState('');
   const [balanceType, setBalanceType] = useState('Dr');
   const [loading, setLoading] = useState(false);
 
-  // Transaction Modal
-  const [activeParty, setActiveParty] = useState(null);
-  const [txnType, setTxnType] = useState('RECEIVE'); // 'RECEIVE' or 'GIVE'
-  const [amount, setAmount] = useState('');
-  const [paymentMode, setPaymentMode] = useState('Cash');
-  const [notes, setNotes] = useState('');
+  // Selected Party Ledger State
+  const [activeLedgerParty, setActiveLedgerParty] = useState(null);
+  const [ledgerEntries, setLedgerEntries] = useState([]);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+
+  // Quick Payment Receive Form inside Ledger
+  const [receivedAmount, setReceivedAmount] = useState('');
+  const [receivedMode, setReceivedMode] = useState('Cash');
+  const [receivedNote, setReceivedNote] = useState('');
+  const [savingPayment, setSavingPayment] = useState(false);
 
   useEffect(() => {
     loadParties();
-  }, [selectedBranch]);
+  }, [currentBranchId]);
 
   async function loadParties() {
     let query = supabase.from('parties').select('*').order('name');
-    if (selectedBranch && selectedBranch !== 'ALL') {
-      query = query.or(`branch_id.eq.${selectedBranch},branch_id.is.null`);
+    if (!isAllBranches) {
+      query = query.or(`branch_id.eq.${currentBranchId},branch_id.is.null`);
     }
     const { data, error } = await query;
     if (!error && data) {
@@ -40,198 +48,224 @@ function Parties() {
 
   async function handleAddParty(e) {
     e.preventDefault();
-    if (!name.trim()) return alert('Please enter Customer / Party Name.');
-    if (!selectedBranch || selectedBranch === 'ALL') {
-      return alert('Please select a specific branch from the sidebar first.');
-    }
+    if (!name.trim()) return alert('Party ka naam likhiye.');
+    if (isAllBranches) return alert('Sidebar se pehle Jobat ya Alirajpur branch select karein.');
 
     setLoading(true);
-    const balanceNum = Number(balance) || 0;
+    const balNum = Number(openingBalance) || 0;
 
     const { error } = await supabase.from('parties').insert([
       {
         name: name.trim(),
         phone: phone.trim() || null,
-        address: address.trim() || null,
-        balance: balanceNum,
-        balance_type: balanceType,
         type: 'customer',
-        branch_id: selectedBranch
+        balance: balNum,
+        balance_type: balanceType,
+        branch_id: currentBranchId
       }
     ]);
 
     setLoading(false);
-
     if (error) {
       alert('Error adding party: ' + error.message);
     } else {
       setName('');
       setPhone('');
-      setAddress('');
-      setBalance('');
+      setOpeningBalance('');
       loadParties();
     }
   }
 
-  async function handleSaveTransaction(e) {
-    e.preventDefault();
-    if (!activeParty) return;
-
-    const txnAmount = Number(amount);
-    if (isNaN(txnAmount) || txnAmount <= 0) {
-      return alert('Please enter a valid amount.');
-    }
-
-    setLoading(true);
+  // Open Ledger and fetch Bills + Payments Date-wise
+  async function handleOpenLedger(party) {
+    setActiveLedgerParty(party);
+    setLedgerLoading(true);
 
     try {
-      // 1. Record payment in party_payments
+      // 1. Fetch Invoices/Bills billed to this customer
+      const { data: salesData } = await supabase
+        .from('sales')
+        .select('*')
+        .ilike('customer', party.name.trim())
+        .order('created_at', { ascending: true });
+
+      // 2. Fetch Payments received from this customer
+      const { data: paymentsData } = await supabase
+        .from('party_payments')
+        .select('*')
+        .or(`party_id.eq.${party.id},party_name.ilike.${party.name.trim()}`)
+        .order('created_at', { ascending: true });
+
+      // Format bills as Debit entries (Maal diya)
+      const formattedBills = (salesData || []).map((s) => ({
+        id: 'bill-' + s.id,
+        date: s.created_at,
+        type: 'BILL',
+        ref: s.invoice_no || `JS-${s.id.slice(0, 5)}`,
+        description: `Bill Generated (${s.payment_type || 'Sale'})`,
+        debit: Number(s.total || 0),
+        credit: 0,
+        paymentMode: s.payment_type
+      }));
+
+      // Format payments as Credit entries (Paisa mila / Jama)
+      const formattedPayments = (paymentsData || []).map((p) => ({
+        id: 'pay-' + p.id,
+        date: p.created_at,
+        type: 'PAYMENT',
+        ref: 'PAY-' + p.id.slice(0, 5),
+        description: p.notes || 'Payment Received (Jama)',
+        debit: 0,
+        credit: Number(p.amount || 0),
+        paymentMode: p.payment_mode || 'Cash'
+      }));
+
+      // Merge and sort chronologically by date
+      const combined = [...formattedBills, ...formattedPayments].sort(
+        (a, b) => new Date(a.date) - new Date(b.date)
+      );
+
+      setLedgerEntries(combined);
+    } catch (err) {
+      console.error(err);
+      alert('Ledger load karne me error: ' + err.message);
+    } finally {
+      setLedgerLoading(false);
+    }
+  }
+
+  // Save new payment received directly in Party Khata
+  async function handleRecordPayment(e) {
+    e.preventDefault();
+    if (!receivedAmount || Number(receivedAmount) <= 0) {
+      return alert('Sahi amount daliye.');
+    }
+
+    setSavingPayment(true);
+    const amt = Number(receivedAmount);
+
+    try {
+      // 1. Insert into party_payments table
       await supabase.from('party_payments').insert([
         {
-          party_id: activeParty.id,
-          party_name: activeParty.name,
-          amount: txnAmount,
-          payment_mode: paymentMode,
-          notes: notes.trim() || (txnType === 'RECEIVE' ? 'Money Received (Jama)' : 'Money Given (Udhaari)'),
-          branch_id: activeParty.branch_id
+          party_id: activeLedgerParty.id,
+          party_name: activeLedgerParty.name,
+          amount: amt,
+          payment_mode: receivedMode,
+          notes: receivedNote.trim() || 'Payment Received (Jama)',
+          branch_id: activeLedgerParty.branch_id || currentBranchId
         }
       ]);
 
-      // 2. Recalculate balance
-      let currentBal = Number(activeParty.balance || 0);
-      let currentType = activeParty.balance_type || 'Dr';
-      let signedBal = currentType === 'Dr' ? currentBal : -currentBal;
-
-      if (txnType === 'RECEIVE') {
-        signedBal -= txnAmount;
-      } else {
-        signedBal += txnAmount;
+      // 2. Insert into cash_entries register so Cash & Bank is also synchronized
+      if (currentBranchId && currentBranchId !== 'ALL') {
+        await supabase.from('cash_entries').insert([
+          {
+            type: 'IN',
+            amount: amt,
+            mode: receivedMode,
+            description: `Payment received from party: ${activeLedgerParty.name}`,
+            branch_id: activeLedgerParty.branch_id || currentBranchId
+          }
+        ]);
       }
 
-      const newType = signedBal >= 0 ? 'Dr' : 'Cr';
-      const newBal = Math.abs(signedBal);
+      // 3. Update Party Balance
+      let curBal = Number(activeLedgerParty.balance || 0);
+      let curType = activeLedgerParty.balance_type || 'Dr';
+      let signedBal = curType === 'Dr' ? curBal : -curBal;
 
-      const { error: uErr } = await supabase
+      signedBal -= amt; // Customer paid -> due reduces
+
+      const updatedType = signedBal >= 0 ? 'Dr' : 'Cr';
+      const updatedBal = Math.abs(signedBal);
+
+      await supabase
         .from('parties')
-        .update({ balance: newBal, balance_type: newType })
-        .eq('id', activeParty.id);
+        .update({
+          balance: updatedBal,
+          balance_type: updatedType
+        })
+        .eq('id', activeLedgerParty.id);
 
-      if (uErr) throw uErr;
+      alert(`₹${amt} Jama ho gaya hai!`);
+      setReceivedAmount('');
+      setReceivedNote('');
 
-      setActiveParty(null);
-      setAmount('');
-      setNotes('');
+      // Refresh Ledger & Parties List
+      const updatedPartyObj = {
+        ...activeLedgerParty,
+        balance: updatedBal,
+        balance_type: updatedType
+      };
+      setActiveLedgerParty(updatedPartyObj);
+      handleOpenLedger(updatedPartyObj);
       loadParties();
-      alert(`Ledger updated! New Balance: ₹${newBal.toLocaleString('en-IN')} (${newType === 'Dr' ? 'Udhaari / Due' : 'Jama / Advance'})`);
     } catch (err) {
       console.error(err);
-      alert('Transaction failed: ' + err.message);
+      alert('Payment save karne me error: ' + err.message);
     } finally {
-      setLoading(false);
+      setSavingPayment(false);
     }
-  }
-
-  async function handleDeleteParty(party) {
-    const due = Number(party.balance || 0);
-    if (due !== 0) {
-      return alert(`Cannot delete party "${party.name}". Account has an active balance of ₹${due}. Delete is only allowed when account is clear (₹0).`);
-    }
-
-    if (!window.confirm(`Are you sure you want to delete party "${party.name}"? This cannot be undone.`)) {
-      return;
-    }
-
-    const { error } = await supabase.from('parties').delete().eq('id', party.id);
-    if (error) {
-      alert('Error deleting party: ' + error.message);
-    } else {
-      loadParties();
-    }
-  }
-
-  function sendWhatsAppReminder(party) {
-    if (!party.phone) return alert('No phone number saved for this party.');
-    const cleanPhone = party.phone.replace(/[^0-9]/g, '');
-    const phoneWithCountry = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
-    const isDr = (party.balance_type || 'Dr') === 'Dr';
-    const text = encodeURIComponent(
-      `Namaste ${party.name} ji, from Janta Shree.\nYour current account balance is ₹${Number(party.balance || 0).toLocaleString('en-IN')} (${isDr ? 'Due / Udhaari' : 'Advance'}). Kindly review.`
-    );
-    window.open(`https://wa.me/${phoneWithCountry}?text=${text}`, '_blank');
-  }
-
-  function sendSMS(party) {
-    if (!party.phone) return alert('No phone number saved for this party.');
-    const isDr = (party.balance_type || 'Dr') === 'Dr';
-    const text = encodeURIComponent(
-      `Namaste ${party.name} ji, from Janta Shree. Balance: Rs.${party.balance || 0} (${isDr ? 'Due' : 'Advance'}).`
-    );
-    window.open(`sms:${party.phone}?body=${text}`, '_blank');
   }
 
   const filteredParties = parties.filter((p) =>
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (p.phone && p.phone.includes(searchQuery)) ||
-    (p.address && p.address.toLowerCase().includes(searchQuery.toLowerCase()))
+    (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p.phone && p.phone.includes(searchTerm))
   );
 
   return (
     <div className="page">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
-        <h1 style={{ margin: 0 }}>Parties & Customer Khata</h1>
-        <input
-          type="text"
-          placeholder="🔍 Search party by name, phone, address..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{ width: '280px', height: '36px', padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
-        />
-      </div>
+      <h1>Parties & Customer Ledger</h1>
 
-      {/* Manual Party Creation Form with Address */}
-      {selectedBranch !== 'ALL' && (
+      {/* Add New Party */}
+      {!isAllBranches && (
         <form onSubmit={handleAddParty} className="form-box">
           <h2 style={{ fontSize: '15px', marginBottom: '14px', color: '#1e293b' }}>
-            + Add New Party (Manual Khata Entry)
+            + Nayi Party / Grahak Add Karein
           </h2>
           <div className="form-row">
             <input
               type="text"
-              placeholder="Party / Customer Name *"
+              placeholder="Party Name *"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
             />
             <input
               type="text"
-              placeholder="Phone (WhatsApp/Call)"
+              placeholder="Mobile Number"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
             />
             <input
-              type="text"
-              placeholder="Address / City (e.g. Jobat / Alirajpur)"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-            />
-          </div>
-          <div className="form-row">
-            <input
               type="number"
+              step="any"
               placeholder="Opening Balance (₹)"
-              value={balance}
-              onChange={(e) => setBalance(e.target.value)}
+              value={openingBalance}
+              onChange={(e) => setOpeningBalance(e.target.value)}
             />
             <select value={balanceType} onChange={(e) => setBalanceType(e.target.value)}>
-              <option value="Dr">Debit (Dr.) - Udhaari / Due (Customer owes you)</option>
-              <option value="Cr">Credit (Cr.) - Jama / Advance (Customer gave advance)</option>
+              <option value="Dr">Dr (Baaki / Lena Hai)</option>
+              <option value="Cr">Cr (Advance / Dena Hai)</option>
             </select>
             <button type="submit" disabled={loading}>
-              {loading ? 'Saving...' : '+ Save Party'}
+              {loading ? 'Adding...' : '+ Save Party'}
             </button>
           </div>
         </form>
       )}
+
+      {/* Search Bar */}
+      <div style={{ margin: '14px 0' }}>
+        <input
+          type="text"
+          placeholder="🔍 Party ke naam ya mobile number se search karein..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          style={{ width: '100%', maxWidth: '380px', padding: '9px 12px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+        />
+      </div>
 
       {/* Parties Table */}
       <table>
@@ -239,176 +273,173 @@ function Parties() {
           <tr>
             <th>Party Name</th>
             <th>Phone</th>
-            <th>Address</th>
-            <th>Balance (₹)</th>
-            <th>Khata Type</th>
-            <th style={{ textAlign: 'center' }}>Contact</th>
-            <th style={{ textAlign: 'center' }}>Khata Action</th>
-            <th style={{ textAlign: 'center' }}>Remove</th>
+            <th>Balance Type</th>
+            <th>Current Balance</th>
+            <th style={{ textAlign: 'center' }}>Khata / Statement</th>
           </tr>
         </thead>
         <tbody>
-          {filteredParties.map((p) => {
-            const bal = Number(p.balance || 0);
-            const isDr = (p.balance_type || 'Dr') === 'Dr';
-            const isAccountClear = bal === 0;
-
-            return (
-              <tr key={p.id}>
-                <td><strong>{p.name}</strong></td>
-                <td>{p.phone || '-'}</td>
-                <td style={{ color: '#64748b', fontSize: '12.5px' }}>{p.address || '-'}</td>
-                <td style={{ fontWeight: 700, color: isDr && bal > 0 ? '#dc2626' : '#047857' }}>
-                  ₹{bal.toLocaleString('en-IN')}
-                </td>
-                <td>
-                  <span
-                    className="badge"
-                    style={{
-                      backgroundColor: isAccountClear ? '#f1f5f9' : (isDr ? '#fee2e2' : '#dcfce7'),
-                      color: isAccountClear ? '#475569' : (isDr ? '#991b1b' : '#166534')
-                    }}
-                  >
-                    {isAccountClear ? 'Account Clear (₹0)' : (isDr ? 'Udhaari / Due (Dr)' : 'Advance / Jama (Cr)')}
-                  </span>
-                </td>
-                {/* WhatsApp & SMS Buttons */}
-                <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
-                  {p.phone ? (
-                    <div style={{ display: 'inline-flex', gap: '4px' }}>
-                      <button
-                        type="button"
-                        onClick={() => sendWhatsAppReminder(p)}
-                        title="Send WhatsApp Reminder"
-                        style={{ height: '28px', padding: '0 8px', fontSize: '11px', backgroundColor: '#25D366' }}
-                      >
-                        💬 WA
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => sendSMS(p)}
-                        title="Send SMS"
-                        style={{ height: '28px', padding: '0 8px', fontSize: '11px', backgroundColor: '#475569' }}
-                      >
-                        ✉️ SMS
-                      </button>
-                    </div>
-                  ) : (
-                    <span style={{ color: '#94a3b8', fontSize: '11px' }}>No Phone</span>
-                  )}
-                </td>
-                {/* Khata Actions */}
-                <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
-                  <div style={{ display: 'inline-flex', gap: '4px' }}>
-                    <button
-                      onClick={() => { setActiveParty(p); setTxnType('RECEIVE'); }}
-                      style={{ height: '28px', padding: '0 8px', fontSize: '11px', backgroundColor: '#0284c7' }}
-                    >
-                      💰 Jama
-                    </button>
-                    <button
-                      onClick={() => { setActiveParty(p); setTxnType('GIVE'); }}
-                      style={{ height: '28px', padding: '0 8px', fontSize: '11px', backgroundColor: '#d97706' }}
-                    >
-                      💸 Udhaar
-                    </button>
-                  </div>
-                </td>
-                {/* Delete Party (Only available if account is clear) */}
-                <td style={{ textAlign: 'center' }}>
-                  {isAccountClear ? (
-                    <button
-                      className="delete-btn"
-                      onClick={() => handleDeleteParty(p)}
-                      title="Account is clear, you can safely delete this party"
-                    >
-                      🗑️ Delete
-                    </button>
-                  ) : (
-                    <span style={{ fontSize: '11px', color: '#94a3b8' }} title="Clear balance to ₹0 first">
-                      Active
-                    </span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
+          {filteredParties.map((p) => (
+            <tr key={p.id}>
+              <td><strong>{p.name}</strong></td>
+              <td>{p.phone || '-'}</td>
+              <td>
+                <span
+                  className="badge"
+                  style={{
+                    backgroundColor: (p.balance_type || 'Dr') === 'Dr' ? '#fee2e2' : '#dcfce7',
+                    color: (p.balance_type || 'Dr') === 'Dr' ? '#991b1b' : '#166534'
+                  }}
+                >
+                  {p.balance_type === 'Cr' ? 'Advance (Cr)' : 'Pending Due (Dr)'}
+                </span>
+              </td>
+              <td style={{ fontWeight: 700, color: (p.balance_type || 'Dr') === 'Dr' ? '#dc2626' : '#047857' }}>
+                ₹{Number(p.balance || 0).toLocaleString('en-IN')}
+              </td>
+              <td style={{ textAlign: 'center' }}>
+                <button
+                  style={{ height: '30px', padding: '0 12px', fontSize: '12px' }}
+                  onClick={() => handleOpenLedger(p)}
+                >
+                  📖 View Statement
+                </button>
+              </td>
+            </tr>
+          ))}
           {filteredParties.length === 0 && (
             <tr>
-              <td colSpan="8" style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
-                No parties match your search.
+              <td colSpan="5" style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
+                Koi party nahi mili.
               </td>
             </tr>
           )}
         </tbody>
       </table>
 
-      {/* Transaction Modal */}
-      {activeParty && (
+      {/* PARTY LEDGER / KHATA MODAL */}
+      {activeLedgerParty && (
         <div className="invoice-modal-overlay">
-          <div className="invoice-modal" style={{ width: '420px' }}>
-            <h2 style={{ fontSize: '18px', marginBottom: '6px' }}>
-              {txnType === 'RECEIVE' ? '💰 Receive Payment (Jama)' : '💸 Give Udhaari / Goods'} : {activeParty.name}
-            </h2>
-            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
-              Current Balance: <strong>₹{Number(activeParty.balance || 0).toLocaleString('en-IN')} ({activeParty.balance_type || 'Dr'})</strong>
-            </p>
-
-            <form onSubmit={handleSaveTransaction}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>
-                    Amount (₹) *
-                  </label>
-                  <input
-                    type="number"
-                    placeholder="Enter amount"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    required
-                    style={{ width: '100%', height: '38px', padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>Mode</label>
-                  <select
-                    value={paymentMode}
-                    onChange={(e) => setPaymentMode(e.target.value)}
-                    style={{ width: '100%', height: '38px', padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
-                  >
-                    <option value="Cash">Cash</option>
-                    <option value="UPI">UPI / GPay / PhonePe</option>
-                    <option value="Bank Transfer">Bank Transfer / Cheque</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>Remark</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Paid in cash at counter"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    style={{ width: '100%', height: '38px', padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
-                  />
+          <div className="invoice-modal" style={{ width: '750px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #cbd5e1', paddingBottom: '12px', marginBottom: '14px' }}>
+              <div>
+                <h2 style={{ fontSize: '18px', color: '#0f172a', margin: 0 }}>
+                  📖 Khata Statement: {activeLedgerParty.name}
+                </h2>
+                {activeLedgerParty.phone && (
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                    Mob: {activeLedgerParty.phone}
+                  </div>
+                )}
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase' }}>Current Balance</span>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: activeLedgerParty.balance_type === 'Dr' ? '#dc2626' : '#047857' }}>
+                  ₹{Number(activeLedgerParty.balance || 0).toLocaleString('en-IN')}{' '}
+                  <span style={{ fontSize: '12px' }}>({activeLedgerParty.balance_type === 'Dr' ? 'Lena Hai' : 'Advance'})</span>
                 </div>
               </div>
+            </div>
 
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button type="submit" disabled={loading} style={{ flex: 1 }}>
-                  {loading ? 'Saving...' : 'Confirm Entry'}
-                </button>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setActiveParty(null)}
-                  style={{ flex: 1 }}
+            {/* Quick Payment Entry Form */}
+            <form onSubmit={handleRecordPayment} style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
+              <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#1e293b', marginBottom: '8px' }}>
+                + Party Se Payment Mila (Jama Entry)
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="Amount (₹) *"
+                  value={receivedAmount}
+                  onChange={(e) => setReceivedAmount(e.target.value)}
+                  style={{ width: '130px', height: '34px', padding: '4px 8px', fontSize: '13px' }}
+                  required
+                />
+                <select
+                  value={receivedMode}
+                  onChange={(e) => setReceivedMode(e.target.value)}
+                  style={{ width: '130px', height: '34px', padding: '4px 8px', fontSize: '13px' }}
                 >
-                  Cancel
+                  <option value="Cash">Cash</option>
+                  <option value="UPI / PhonePe">UPI / Online</option>
+                  <option value="Bank">Bank Account</option>
+                </select>
+                <input
+                  type="text"
+                  placeholder="Remarks (e.g. Cheque No / PhonePe)"
+                  value={receivedNote}
+                  onChange={(e) => setReceivedNote(e.target.value)}
+                  style={{ flex: 1, minWidth: '150px', height: '34px', padding: '4px 8px', fontSize: '13px' }}
+                />
+                <button
+                  type="submit"
+                  disabled={savingPayment}
+                  style={{ height: '34px', padding: '0 14px', fontSize: '12.5px' }}
+                >
+                  {savingPayment ? 'Saving...' : '✓ Jama Karein'}
                 </button>
               </div>
             </form>
+
+            {/* Date-wise Statement Table */}
+            {ledgerLoading ? (
+              <div style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
+                Statement load ho raha hai...
+              </div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Ref / Bill No</th>
+                    <th>Description</th>
+                    <th>Mode</th>
+                    <th style={{ textAlign: 'right', color: '#dc2626' }}>Bill Diya (Dr)</th>
+                    <th style={{ textAlign: 'right', color: '#047857' }}>Payment Mila (Cr)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ledgerEntries.map((row) => (
+                    <tr key={row.id}>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {new Date(row.date).toLocaleDateString('en-GB')}
+                      </td>
+                      <td>
+                        <strong>{row.ref}</strong>
+                      </td>
+                      <td>{row.description}</td>
+                      <td>
+                        <span className="badge">{row.paymentMode || '-'}</span>
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 600, color: row.debit > 0 ? '#dc2626' : '#94a3b8' }}>
+                        {row.debit > 0 ? `₹${row.debit.toLocaleString('en-IN')}` : '-'}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: row.credit > 0 ? '#047857' : '#94a3b8' }}>
+                        {row.credit > 0 ? `₹${row.credit.toLocaleString('en-IN')}` : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                  {ledgerEntries.length === 0 && (
+                    <tr>
+                      <td colSpan="6" style={{ textAlign: 'center', color: '#888', padding: '24px' }}>
+                        Is party ka abhi tak koi bill ya payment record nahi hai.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+              <button
+                className="btn-secondary"
+                onClick={() => setActiveLedgerParty(null)}
+                style={{ padding: '0 20px' }}
+              >
+                Close Statement
+              </button>
+            </div>
           </div>
         </div>
       )}
