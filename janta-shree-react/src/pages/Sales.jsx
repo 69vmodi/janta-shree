@@ -21,7 +21,7 @@ function Sales() {
   const [customerPhone, setCustomerPhone] = useState('');
   const [showPartyDropdown, setShowPartyDropdown] = useState(false);
 
-  // Payment Options: Cash, Debit (Udhar Sale), Credit (Advance Adjustment)
+  // Payment Options: Cash, UPI, Debit (Udhar), Credit (Advance Adjustment)
   const [paymentType, setPaymentType] = useState('Cash');
 
   const [selectedItem, setSelectedItem] = useState('');
@@ -238,7 +238,7 @@ function Sales() {
 
       if (saleError) throw saleError;
 
-      // 3. Update Existing Party Ledger
+      // 3. Update Existing Party Ledger if Udhar (Debit) or Credit (Advance Adjustment)
       if (paymentType === 'Debit' || paymentType === 'Credit') {
         const { data: existingParty } = await supabase
           .from('parties')
@@ -249,8 +249,8 @@ function Sales() {
 
         if (existingParty) {
           let currentBal = Number(existingParty.balance || 0);
-          let currentType = existingParty.balance_type || 'Dr';
-          let signedBal = currentType === 'Dr' ? currentBal : -currentBal;
+          let currentType = (existingParty.balance_type || 'Dr').toUpperCase();
+          let signedBal = currentType === 'DR' ? currentBal : -currentBal;
 
           signedBal += grandTotal;
 
@@ -408,7 +408,7 @@ function Sales() {
       <h1>Sales / Billing</h1>
 
       <div className="form-row">
-        {/* Existing Party Dropdown with Mobile Scroll Support */}
+        {/* Customer Name input with scroll dropdown */}
         <div style={{ position: 'relative', flex: '2 1 240px' }}>
           <input
             type="text"
@@ -425,7 +425,6 @@ function Sales() {
 
           {showPartyDropdown && (
             <>
-              {/* Invisible backdrop to dismiss dropdown on outside tap */}
               <div
                 style={{ position: 'fixed', inset: 0, zIndex: 55 }}
                 onClick={() => setShowPartyDropdown(false)}
@@ -468,7 +467,7 @@ function Sales() {
                       <strong>{p.name}</strong>
                       {p.phone && <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px' }}>({p.phone})</span>}
                     </div>
-                    <span style={{ fontSize: '11.5px', fontWeight: 600, color: (p.balance_type || 'Dr') === 'Dr' && Number(p.balance || 0) > 0 ? '#dc2626' : '#047857' }}>
+                    <span style={{ fontSize: '11.5px', fontWeight: 600, color: (p.balance_type || 'Dr').toUpperCase() === 'DR' && Number(p.balance || 0) > 0 ? '#dc2626' : '#047857' }}>
                       Bal: ₹{Number(p.balance || 0).toLocaleString('en-IN')}
                     </span>
                   </div>
@@ -490,8 +489,10 @@ function Sales() {
           onChange={(e) => setCustomerPhone(e.target.value)}
         />
 
+        {/* Payment Type Selection including UPI */}
         <select value={paymentType} onChange={(e) => setPaymentType(e.target.value)}>
-          <option value="Cash">💵 Cash (Immediate Payment)</option>
+          <option value="Cash">💵 Cash</option>
+          <option value="UPI">📱 UPI / Online (GPay / PhonePe / QR)</option>
           <option value="Debit">📝 Debit (Credit Sale / Udhar)</option>
           <option value="Credit">🛡️ Credit (Advance Adjustment)</option>
         </select>
@@ -626,7 +627,7 @@ function Sales() {
                 <div>
                   <strong>Billed To:</strong> {activeInvoice.customer}
                   {activeInvoice.customerPhone && <div>Mob: {activeInvoice.customerPhone}</div>}
-                  <div>Mode: {activeInvoice.paymentType}</div>
+                  <div>Mode: <strong>{activeInvoice.paymentType}</strong></div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <strong>Invoice No:</strong> {activeInvoice.id}
