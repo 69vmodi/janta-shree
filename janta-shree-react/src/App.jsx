@@ -1,8 +1,9 @@
-import { Routes, Route, NavLink, useNavigate } from 'react-router-dom';
-import { useContext } from 'react';
+import { useState, useEffect, useContext } from 'react';
+import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import { BranchContext } from './BranchContext';
 
+import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Items from './pages/Items';
 import Transfers from './pages/Transfers';
@@ -12,12 +13,41 @@ import Invoices from './pages/Invoices';
 import Parties from './pages/Parties';
 import Reports from './pages/Reports';
 
-function App({ session }) {
+function App() {
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const { selectedBranch, setSelectedBranch, branches } = useContext(BranchContext);
-  const navigate = useNavigate();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   async function handleLogout() {
     await supabase.auth.signOut();
+  }
+
+  if (authLoading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'sans-serif' }}>
+        Loading Janta Shree...
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <Login onLoginSuccess={() => supabase.auth.getSession().then(({ data: { session } }) => setSession(session))} />;
   }
 
   return (
@@ -33,7 +63,7 @@ function App({ session }) {
             onChange={(e) => setSelectedBranch(e.target.value)}
           >
             <option value="ALL">🏢 Consolidated (All)</option>
-            {branches.map((b) => (
+            {(branches || []).map((b) => (
               <option key={b.id} value={b.id}>
                 📍 {b.name}
               </option>
@@ -70,6 +100,7 @@ function App({ session }) {
           <Route path="/invoices" element={<Invoices />} />
           <Route path="/parties" element={<Parties />} />
           <Route path="/reports" element={<Reports />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>
