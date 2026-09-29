@@ -5,21 +5,23 @@ import { BranchContext } from '../BranchContext';
 function Sales() {
   const { selectedBranch } = useContext(BranchContext);
 
-  const currentBranchId = typeof selectedBranch === 'object' && selectedBranch !== null 
-    ? selectedBranch.selectedBranch 
-    : selectedBranch;
+  const currentBranchId =
+    typeof selectedBranch === 'object' && selectedBranch !== null
+      ? selectedBranch.selectedBranch
+      : selectedBranch;
 
   const isAllBranches = !currentBranchId || currentBranchId === 'ALL';
 
   const [branchInfo, setBranchInfo] = useState(null);
   const [items, setItems] = useState([]);
+  const [parties, setParties] = useState([]);
+
+  // Customer selection state
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  
-  // Payment Options:
-  // 'Cash' = Immediate settlement
-  // 'Debit' = Udhar / Credit Sale (receivable from customer)
-  // 'Credit' = Advance Adjustment (adjusted against customer deposit)
+  const [showPartyDropdown, setShowPartyDropdown] = useState(false);
+
+  // Payment Options: Cash, Debit (Udhar Sale), Credit (Advance Adjustment)
   const [paymentType, setPaymentType] = useState('Cash');
 
   const [selectedItem, setSelectedItem] = useState('');
@@ -39,6 +41,7 @@ function Sales() {
       } else {
         fetchBranchDetails();
         fetchItems();
+        fetchParties();
       }
     }
   }, [currentBranchId]);
@@ -72,6 +75,28 @@ function Sales() {
     }
   }
 
+  async function fetchParties() {
+    let query = supabase.from('parties').select('*').order('name');
+    if (!isAllBranches) {
+      query = query.or(`branch_id.eq.${currentBranchId},branch_id.is.null`);
+    }
+
+    const { data, error } = await query;
+    if (!error && data) {
+      // Remove duplicate names if any exist from older entries
+      const uniqueParties = [];
+      const seenNames = new Set();
+      for (const p of data) {
+        const cleanName = (p.name || '').trim().toLowerCase();
+        if (!seenNames.has(cleanName)) {
+          seenNames.add(cleanName);
+          uniqueParties.push(p);
+        }
+      }
+      setParties(uniqueParties);
+    }
+  }
+
   async function fetchAllSalesHistory() {
     const { data } = await supabase
       .from('sales')
@@ -80,6 +105,12 @@ function Sales() {
       .limit(30);
 
     setAllSalesHistory(data || []);
+  }
+
+  function handleSelectParty(party) {
+    setCustomerName(party.name);
+    if (party.phone) setCustomerPhone(party.phone);
+    setShowPartyDropdown(false);
   }
 
   function handleItemSelect(name) {
@@ -170,7 +201,7 @@ function Sales() {
   }
 
   async function handleSaveSale() {
-    if (!customerName.trim()) return alert('Please enter customer name.');
+    if (!customerName.trim()) return alert('Please enter or select a customer name.');
     if (!currentBranchId || isAllBranches) return alert('Select a specific branch from the sidebar.');
 
     setIsSaving(true);
@@ -192,7 +223,7 @@ function Sales() {
           .eq('id', item.id);
       }
 
-      // 2. Save Sale
+      // 2. Save Sale Invoice
       const { error: saleError } = await supabase.from('sales').insert([
         {
           invoice_no: nextInvoiceNo,
@@ -208,15 +239,12 @@ function Sales() {
 
       if (saleError) throw saleError;
 
-      // 3. Customer Account Behavior:
-      // - Debit (Udhar Sale): Customer owes us money -> Increases Debit balance (Dr)
-      // - Credit (Advance Adjustment): Customer already paid advance -> Reduces Advance (Cr)
-      // - Cash: Immediate full payment -> No ledger balance change
+      // 3. Update Existing Party Ledger (or create only if entirely new)
       if (paymentType === 'Debit' || paymentType === 'Credit') {
         const { data: existingParty } = await supabase
           .from('parties')
           .select('*')
-          .eq('name', customerName.trim())
+          .ilike('name', customerName.trim())
           .eq('branch_id', currentBranchId)
           .maybeSingle();
 
@@ -225,13 +253,8 @@ function Sales() {
           let currentType = existingParty.balance_type || 'Dr';
           let signedBal = currentType === 'Dr' ? currentBal : -currentBal;
 
-          if (paymentType === 'Debit') {
-            // Added Udhar
-            signedBal += grandTotal;
-          } else if (paymentType === 'Credit') {
-            // Deducted from advance
-            signedBal += grandTotal;
-          }
+          // Debit = Udhar -> increases amount customer owes you
+          signedBal += grandTotal;
 
           const newType = signedBal >= 0 ? 'Dr' : 'Cr';
           const newBal = Math.abs(signedBal);
@@ -245,6 +268,7 @@ function Sales() {
             })
             .eq('id', existingParty.id);
         } else {
+          // New party creation only if not in database
           await supabase.from('parties').insert([
             {
               name: customerName.trim(),
@@ -282,6 +306,7 @@ function Sales() {
       setCustomerPhone('');
       setFreight('');
       fetchItems();
+      fetchParties();
     } catch (err) {
       console.error(err);
       alert('Save failed: ' + err.message);
@@ -343,6 +368,12 @@ function Sales() {
     }, 250);
   }
 
+  // Filter parties as user types in Customer Name
+  const filteredParties = parties.filter((p) =>
+    (p.name || '').toLowerCase().includes(customerName.toLowerCase()) ||
+    (p.phone && p.phone.includes(customerName))
+  );
+
   if (isAllBranches) {
     return (
       <div className="page">
@@ -381,19 +412,83 @@ function Sales() {
       <h1>Sales / Billing</h1>
 
       <div className="form-row">
-        <input
-          type="text"
-          placeholder="Customer Name *"
-          value={customerName}
-          onChange={(e) => setCustomerName(e.target.value)}
-          required
-        />
+        {/* Existing Party Dropdown / Autocomplete */}
+        <div style={{ position: 'relative', flex: '2 1 240px' }}>
+          <input
+            type="text"
+            placeholder="👤 Customer Name (Tap to pick existing or type) *"
+            value={customerName}
+            onChange={(e) => {
+              setCustomerName(e.target.value);
+              setShowPartyDropdown(true);
+            }}
+            onFocus={() => setShowPartyDropdown(true)}
+            required
+            style={{ width: '100%' }}
+          />
+
+          {showPartyDropdown && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                backgroundColor: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '4px',
+                boxShadow: '0 8px 16px rgba(0,0,0,0.15)',
+                maxHeight: '220px',
+                overflowY: 'auto',
+                zIndex: 60
+              }}
+            >
+              {filteredParties.map((p) => (
+                <div
+                  key={p.id}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handleSelectParty(p);
+                  }}
+                  onTouchEnd={(e) => {
+                    e.preventDefault();
+                    handleSelectParty(p);
+                  }}
+                  style={{
+                    padding: '9px 12px',
+                    borderBottom: '1px solid #f1f5f9',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}
+                >
+                  <div>
+                    <strong>{p.name}</strong>
+                    {p.phone && <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px' }}>({p.phone})</span>}
+                  </div>
+                  <span style={{ fontSize: '11.5px', fontWeight: 600, color: (p.balance_type || 'Dr') === 'Dr' && Number(p.balance || 0) > 0 ? '#dc2626' : '#047857' }}>
+                    Bal: ₹{Number(p.balance || 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              ))}
+              {filteredParties.length === 0 && (
+                <div style={{ padding: '10px 12px', fontSize: '12px', color: '#94a3b8' }}>
+                  No existing party found. Press enter to bill as new: "{customerName}"
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <input
           type="text"
           placeholder="Customer Phone"
           value={customerPhone}
           onChange={(e) => setCustomerPhone(e.target.value)}
         />
+
         <select value={paymentType} onChange={(e) => setPaymentType(e.target.value)}>
           <option value="Cash">💵 Cash (Immediate Payment)</option>
           <option value="Debit">📝 Debit (Credit Sale / Udhar)</option>
