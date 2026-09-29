@@ -83,7 +83,6 @@ function Sales() {
 
     const { data, error } = await query;
     if (!error && data) {
-      // Remove duplicate names if any exist from older entries
       const uniqueParties = [];
       const seenNames = new Set();
       for (const p of data) {
@@ -239,7 +238,7 @@ function Sales() {
 
       if (saleError) throw saleError;
 
-      // 3. Update Existing Party Ledger (or create only if entirely new)
+      // 3. Update Existing Party Ledger
       if (paymentType === 'Debit' || paymentType === 'Credit') {
         const { data: existingParty } = await supabase
           .from('parties')
@@ -253,7 +252,6 @@ function Sales() {
           let currentType = existingParty.balance_type || 'Dr';
           let signedBal = currentType === 'Dr' ? currentBal : -currentBal;
 
-          // Debit = Udhar -> increases amount customer owes you
           signedBal += grandTotal;
 
           const newType = signedBal >= 0 ? 'Dr' : 'Cr';
@@ -268,7 +266,6 @@ function Sales() {
             })
             .eq('id', existingParty.id);
         } else {
-          // New party creation only if not in database
           await supabase.from('parties').insert([
             {
               name: customerName.trim(),
@@ -368,7 +365,6 @@ function Sales() {
     }, 250);
   }
 
-  // Filter parties as user types in Customer Name
   const filteredParties = parties.filter((p) =>
     (p.name || '').toLowerCase().includes(customerName.toLowerCase()) ||
     (p.phone && p.phone.includes(customerName))
@@ -412,7 +408,7 @@ function Sales() {
       <h1>Sales / Billing</h1>
 
       <div className="form-row">
-        {/* Existing Party Dropdown / Autocomplete */}
+        {/* Existing Party Dropdown with Mobile Scroll Support */}
         <div style={{ position: 'relative', flex: '2 1 240px' }}>
           <input
             type="text"
@@ -428,57 +424,62 @@ function Sales() {
           />
 
           {showPartyDropdown && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                right: 0,
-                backgroundColor: '#ffffff',
-                border: '1px solid #cbd5e1',
-                borderRadius: '4px',
-                boxShadow: '0 8px 16px rgba(0,0,0,0.15)',
-                maxHeight: '220px',
-                overflowY: 'auto',
-                zIndex: 60
-              }}
-            >
-              {filteredParties.map((p) => (
-                <div
-                  key={p.id}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    handleSelectParty(p);
-                  }}
-                  onTouchEnd={(e) => {
-                    e.preventDefault();
-                    handleSelectParty(p);
-                  }}
-                  style={{
-                    padding: '9px 12px',
-                    borderBottom: '1px solid #f1f5f9',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}
-                >
-                  <div>
-                    <strong>{p.name}</strong>
-                    {p.phone && <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px' }}>({p.phone})</span>}
+            <>
+              {/* Invisible backdrop to dismiss dropdown on outside tap */}
+              <div
+                style={{ position: 'fixed', inset: 0, zIndex: 55 }}
+                onClick={() => setShowPartyDropdown(false)}
+              />
+
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  boxShadow: '0 10px 25px -5px rgba(0,0,0,0.25)',
+                  maxHeight: '220px',
+                  overflowY: 'auto',
+                  WebkitOverflowScrolling: 'touch',
+                  touchAction: 'pan-y',
+                  zIndex: 60
+                }}
+              >
+                {filteredParties.map((p) => (
+                  <div
+                    key={p.id}
+                    onClick={() => handleSelectParty(p)}
+                    style={{
+                      padding: '12px 14px',
+                      borderBottom: '1px solid #f1f5f9',
+                      cursor: 'pointer',
+                      fontSize: '13.5px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      userSelect: 'none',
+                      WebkitUserSelect: 'none'
+                    }}
+                  >
+                    <div>
+                      <strong>{p.name}</strong>
+                      {p.phone && <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px' }}>({p.phone})</span>}
+                    </div>
+                    <span style={{ fontSize: '11.5px', fontWeight: 600, color: (p.balance_type || 'Dr') === 'Dr' && Number(p.balance || 0) > 0 ? '#dc2626' : '#047857' }}>
+                      Bal: ₹{Number(p.balance || 0).toLocaleString('en-IN')}
+                    </span>
                   </div>
-                  <span style={{ fontSize: '11.5px', fontWeight: 600, color: (p.balance_type || 'Dr') === 'Dr' && Number(p.balance || 0) > 0 ? '#dc2626' : '#047857' }}>
-                    Bal: ₹{Number(p.balance || 0).toLocaleString('en-IN')}
-                  </span>
-                </div>
-              ))}
-              {filteredParties.length === 0 && (
-                <div style={{ padding: '10px 12px', fontSize: '12px', color: '#94a3b8' }}>
-                  No existing party found. Press enter to bill as new: "{customerName}"
-                </div>
-              )}
-            </div>
+                ))}
+                {filteredParties.length === 0 && (
+                  <div style={{ padding: '12px 14px', fontSize: '12px', color: '#94a3b8' }}>
+                    No existing party found. Press enter to bill as new: "{customerName}"
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
 

@@ -145,9 +145,8 @@ function Purchases() {
     }
   }
 
-  // Filter items as user types
   const filteredDropdownItems = existingItems.filter((i) =>
-    i.name.toLowerCase().includes(itemName.toLowerCase())
+    (i.name || '').toLowerCase().includes(itemName.toLowerCase())
   );
 
   return (
@@ -199,7 +198,7 @@ function Purchases() {
           </div>
 
           <div className="form-row">
-            {/* Mobile and Laptop Friendly Item Selector */}
+            {/* Mobile & Laptop Friendly Item Selector with Clean Scroll */}
             <div style={{ flex: '2 1 240px', position: 'relative' }}>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
                 ITEM NAME (TYPE OR PICK EXISTING) *
@@ -217,51 +216,55 @@ function Purchases() {
               />
 
               {showItemDropdown && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
-                    right: 0,
-                    backgroundColor: '#ffffff',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '4px',
-                    boxShadow: '0 8px 16px rgba(0,0,0,0.15)',
-                    maxHeight: '200px',
-                    overflowY: 'auto',
-                    zIndex: 50
-                  }}
-                >
-                  {filteredDropdownItems.map((item) => (
-                    <div
-                      key={item.id}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        handleSelectExistingItem(item);
-                      }}
-                      onTouchEnd={(e) => {
-                        e.preventDefault();
-                        handleSelectExistingItem(item);
-                      }}
-                      style={{
-                        padding: '10px 12px',
-                        borderBottom: '1px solid #f1f5f9',
-                        cursor: 'pointer',
-                        fontSize: '13px'
-                      }}
-                    >
-                      <strong>{item.name}</strong>
-                      <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '8px' }}>
-                        (Stock: {item.stock} {item.unit})
-                      </span>
-                    </div>
-                  ))}
-                  {filteredDropdownItems.length === 0 && (
-                    <div style={{ padding: '10px 12px', fontSize: '12px', color: '#94a3b8' }}>
-                      Press enter to create as a new item: "{itemName}"
-                    </div>
-                  )}
-                </div>
+                <>
+                  <div
+                    style={{ position: 'fixed', inset: 0, zIndex: 45 }}
+                    onClick={() => setShowItemDropdown(false)}
+                  />
+
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      boxShadow: '0 10px 25px -5px rgba(0,0,0,0.25)',
+                      maxHeight: '220px',
+                      overflowY: 'auto',
+                      WebkitOverflowScrolling: 'touch',
+                      touchAction: 'pan-y',
+                      zIndex: 50
+                    }}
+                  >
+                    {filteredDropdownItems.map((item) => (
+                      <div
+                        key={item.id}
+                        onClick={() => handleSelectExistingItem(item)}
+                        style={{
+                          padding: '12px 14px',
+                          borderBottom: '1px solid #f1f5f9',
+                          cursor: 'pointer',
+                          fontSize: '13.5px',
+                          userSelect: 'none',
+                          WebkitUserSelect: 'none'
+                        }}
+                      >
+                        <strong>{item.name}</strong>
+                        <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '8px' }}>
+                          (Stock: {item.stock} {item.unit})
+                        </span>
+                      </div>
+                    ))}
+                    {filteredDropdownItems.length === 0 && (
+                      <div style={{ padding: '12px 14px', fontSize: '12px', color: '#94a3b8' }}>
+                        Press enter to create as a new item: "{itemName}"
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </div>
 
