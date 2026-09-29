@@ -76,6 +76,29 @@ function Parties() {
     }
   }
 
+  // Delete Party
+  async function handleDeleteParty(party) {
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete "${party.name}"? This will remove the party and their khata records.`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      const { error } = await supabase
+        .from('parties')
+        .delete()
+        .eq('id', party.id);
+
+      if (error) throw error;
+
+      alert(`Party "${party.name}" deleted successfully.`);
+      loadParties();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete party: ' + err.message);
+    }
+  }
+
   // Open Ledger and fetch Bills + Payments Date-wise
   async function handleOpenLedger(party) {
     setActiveLedgerParty(party);
@@ -216,7 +239,7 @@ function Parties() {
     return cleanPhone;
   }
 
-  // WhatsApp reminder generator with phone prompt fallback
+  // Hindi WhatsApp Reminder
   async function sendWhatsAppReminder(party) {
     let targetPhone = party.phone;
 
@@ -229,13 +252,13 @@ function Parties() {
     const phoneWithCode = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
 
     const message = encodeURIComponent(
-      `Namaste ${party.name} ji,\n\nThis is a gentle payment reminder from *JANTA SHREE*.\nYour current pending balance (Udhari) is *₹${Number(party.balance || 0).toLocaleString('en-IN')}*.\n\nPlease clear the balance at your earliest convenience.\n\nThank you!`
+      `नमस्ते ${party.name} जी,\n\nजनता श्री (Janta Shree) से आपका बकाया भुगतान (उधारी) *₹${Number(party.balance || 0).toLocaleString('en-IN')}* बाकी है।\n\nकृपया जल्द से जल्द भुगतान करने का कष्ट करें।\n\nधन्यवाद!`
     );
 
     window.open(`https://wa.me/${phoneWithCode}?text=${message}`, '_blank');
   }
 
-  // SMS reminder generator with phone prompt fallback
+  // Hindi SMS Reminder
   async function sendSMSReminder(party) {
     let targetPhone = party.phone;
 
@@ -247,7 +270,7 @@ function Parties() {
     const cleanPhone = targetPhone.replace(/[^0-9]/g, '');
 
     const message = encodeURIComponent(
-      `Dear ${party.name}, your outstanding due at JANTA SHREE is Rs. ${Number(party.balance || 0).toLocaleString('en-IN')}. Please arrange payment soon. Thank you.`
+      `नमस्ते ${party.name} जी, जनता श्री (Janta Shree) में आपका बकाया ₹${Number(party.balance || 0).toLocaleString('en-IN')} बाकी है। कृपया जल्द भुगतान करें। धन्यवाद।`
     );
 
     window.open(`sms:${cleanPhone}?body=${message}`, '_self');
@@ -321,6 +344,7 @@ function Parties() {
             <th>Current Balance</th>
             <th style={{ textAlign: 'center' }}>Send Reminder</th>
             <th style={{ textAlign: 'center' }}>Ledger / Statement</th>
+            <th style={{ textAlign: 'center' }}>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -368,11 +392,10 @@ function Parties() {
                   ₹{balVal.toLocaleString('en-IN')}
                 </td>
                 <td style={{ textAlign: 'center' }}>
-                  {/* WhatsApp and SMS Buttons are ALWAYS visible for any party with balance */}
                   <div style={{ display: 'inline-flex', gap: '6px' }}>
                     <button
                       onClick={() => sendWhatsAppReminder(p)}
-                      title="Send WhatsApp Reminder"
+                      title="Send Hindi WhatsApp Reminder"
                       style={{
                         height: '30px',
                         padding: '0 10px',
@@ -389,7 +412,7 @@ function Parties() {
                     </button>
                     <button
                       onClick={() => sendSMSReminder(p)}
-                      title="Send Direct SMS"
+                      title="Send Hindi SMS"
                       style={{
                         height: '30px',
                         padding: '0 10px',
@@ -414,12 +437,22 @@ function Parties() {
                     📖 View Statement
                   </button>
                 </td>
+                <td style={{ textAlign: 'center' }}>
+                  <button
+                    onClick={() => handleDeleteParty(p)}
+                    className="delete-btn"
+                    title="Delete Party"
+                    style={{ height: '28px', padding: '0 10px', fontSize: '12px' }}
+                  >
+                    🗑️ Delete
+                  </button>
+                </td>
               </tr>
             );
           })}
           {filteredParties.length === 0 && (
             <tr>
-              <td colSpan="6" style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
+              <td colSpan="7" style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
                 No parties found.
               </td>
             </tr>
@@ -458,7 +491,7 @@ function Parties() {
               </div>
             </div>
 
-            {/* Quick Actions (WhatsApp / SMS Inside Modal) */}
+            {/* Quick Actions (Hindi WhatsApp / SMS Inside Modal) */}
             <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
               <button
                 onClick={() => sendWhatsAppReminder(activeLedgerParty)}
