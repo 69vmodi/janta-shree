@@ -22,11 +22,12 @@ function App({ session }) {
 
   return (
     <div className="layout">
+      {/* SIDEBAR NAVIGATION */}
       <aside className="sidebar">
         <div className="brand">JANTA SHREE</div>
 
         <div className="branch-select-box">
-          <label>Branch View</label>
+          <label>BRANCH VIEW</label>
           <select
             value={selectedBranch}
             onChange={(e) => setSelectedBranch(e.target.value)}
@@ -58,6 +59,7 @@ function App({ session }) {
         </div>
       </aside>
 
+      {/* MAIN CONTENT AREA */}
       <main className="content">
         <Routes>
           <Route path="/" element={<Dashboard />} />
