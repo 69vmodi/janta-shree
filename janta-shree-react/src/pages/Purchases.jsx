@@ -81,7 +81,7 @@ function Purchases() {
     setLoading(true);
 
     try {
-      // 1. UPDATE ITEM STOCK FIRST (Guarantees inventory is accurately increased)
+      // 1. UPDATE ITEM STOCK FIRST
       const { data: matchedItems, error: fetchErr } = await supabase
         .from('items')
         .select('*')
@@ -127,7 +127,7 @@ function Purchases() {
         if (insertErr) throw insertErr;
       }
 
-      // 2. RECORD IN PURCHASES TABLE (Adaptive field names to avoid cache mismatch)
+      // 2. RECORD IN PURCHASES TABLE
       const purchaseEntry = {
         invoice_no: invoiceNo.trim() || null,
         purchase_date: purchaseDate,
@@ -143,7 +143,6 @@ function Purchases() {
 
       const { error: pErr } = await supabase.from('purchases').insert([purchaseEntry]);
 
-      // If 'item_name' failed, retry with just 'item'
       if (pErr && pErr.message.includes('item_name')) {
         delete purchaseEntry.item_name;
         await supabase.from('purchases').insert([purchaseEntry]);
@@ -171,6 +170,53 @@ function Purchases() {
       alert('Error updating stock: ' + err.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Delete purchase entry and optionally deduct the added stock
+  async function handleDeletePurchase(purchase) {
+    const targetItemName = purchase.item_name || purchase.item || 'this item';
+    const qtyToDelete = Number(purchase.quantity || 0);
+
+    const isConfirmed = window.confirm(
+      `Are you sure you want to delete this purchase entry?\n\nItem: ${targetItemName}\nQty to revert: -${qtyToDelete} ${purchase.unit || ''}\n\nThis will also deduct ${qtyToDelete} ${purchase.unit || ''} from current stock.`
+    );
+    if (!isConfirmed) return;
+
+    try {
+      // 1. Revert stock in items table if item exists
+      const branchIdToTarget = purchase.branch_id || currentBranchId;
+      const { data: matchedItems } = await supabase
+        .from('items')
+        .select('*')
+        .eq('branch_id', branchIdToTarget)
+        .ilike('name', targetItemName);
+
+      if (matchedItems && matchedItems.length > 0) {
+        const itemToUpdate = matchedItems[0];
+        const currentStock = Number(itemToUpdate.stock || 0);
+        const revertedStock = Math.max(0, currentStock - qtyToDelete);
+
+        await supabase
+          .from('items')
+          .update({ stock: revertedStock })
+          .eq('id', itemToUpdate.id);
+      }
+
+      // 2. Delete the record from purchases table
+      const { error: delErr } = await supabase
+        .from('purchases')
+        .delete()
+        .eq('id', purchase.id);
+
+      if (delErr) throw delErr;
+
+      alert('Purchase entry deleted and stock reverted successfully.');
+      loadPurchases();
+      loadBranchItems();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete purchase: ' + err.message);
     }
   }
 
@@ -326,7 +372,7 @@ function Purchases() {
 
             <div>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
-                QTY *
+                QTY TO ADD *
               </label>
               <input
                 type="number"
@@ -378,14 +424,15 @@ function Purchases() {
       <table>
         <thead>
           <tr>
-            <th>Date</th>
-            <th>Invoice No</th>
-            <th>Vendor</th>
-            <th>Item</th>
-            <th>Qty</th>
-            <th>Purchase Rate</th>
-            <th>Total Amount</th>
-            {isAllBranches && <th>Branch</th>}
+            <th>DATE</th>
+            <th>INVOICE NO</th>
+            <th>VENDOR</th>
+            <th>ITEM</th>
+            <th>QTY ADDED</th>
+            <th>PURCHASE RATE</th>
+            <th>TOTAL AMOUNT</th>
+            {isAllBranches && <th>BRANCH</th>}
+            <th style={{ textAlign: 'center' }}>ACTION</th>
           </tr>
         </thead>
         <tbody>
@@ -395,15 +442,34 @@ function Purchases() {
               <td><strong>{p.invoice_no || '-'}</strong></td>
               <td>{p.vendor_name || '-'}</td>
               <td><strong>{p.item_name || p.item || '-'}</strong></td>
-              <td>{p.quantity} {p.unit}</td>
+              <td style={{ color: '#047857', fontWeight: 700 }}>+{p.quantity} {p.unit}</td>
               <td>₹{p.rate}</td>
               <td style={{ fontWeight: 700 }}>₹{Number(p.total || 0).toLocaleString('en-IN')}</td>
               {isAllBranches && <td>{p.branch?.name || '-'}</td>}
+              <td style={{ textAlign: 'center' }}>
+                <button
+                  onClick={() => handleDeletePurchase(p)}
+                  title="Delete purchase entry and revert stock"
+                  style={{
+                    height: '28px',
+                    padding: '0 8px',
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    backgroundColor: '#fee2e2',
+                    color: '#dc2626',
+                    border: '1px solid #f87171',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🗑️ Del
+                </button>
+              </td>
             </tr>
           ))}
           {purchases.length === 0 && (
             <tr>
-              <td colSpan={isAllBranches ? 8 : 7} style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
+              <td colSpan={isAllBranches ? 9 : 8} style={{ textAlign: 'center', color: '#888', padding: '20px' }}>
                 No purchases recorded yet.
               </td>
             </tr>
