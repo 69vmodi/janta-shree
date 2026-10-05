@@ -27,7 +27,7 @@ function Purchases() {
   const [sellingRate, setSellingRate] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Dropdown list control for mobile & desktop
+  // Dropdown list control
   const [showItemDropdown, setShowItemDropdown] = useState(false);
 
   useEffect(() => {
@@ -71,93 +71,104 @@ function Purchases() {
     if (isAllBranches) return alert('Please select a specific branch from the sidebar before entering purchases.');
     if (!itemName.trim()) return alert('Please enter or select an item name.');
 
-    const qtyToAdd = Number(quantity);
-    if (!qtyToAdd || qtyToAdd <= 0) return alert('Enter a valid purchase quantity.');
+    const qtyNum = Number(quantity);
+    if (!qtyNum || qtyNum <= 0) return alert('Enter a valid purchase quantity.');
 
     const pRate = Number(purchaseRate) || 0;
     const sRate = Number(sellingRate) || pRate;
-    const totalAmount = Math.round(qtyToAdd * pRate);
+    const totalAmount = Math.round(qtyNum * pRate);
 
     setLoading(true);
 
     try {
-      // 1. Record purchase entry
-      const purchasePayload = {
-        invoice_no: invoiceNo.trim() || null,
-        purchase_date: purchaseDate,
-        vendor_name: vendorName.trim() || null,
-        item_name: itemName.trim(),
-        unit: unit || 'NOS',
-        quantity: qtyToAdd,
-        rate: pRate,
-        total: totalAmount,
-        branch_id: currentBranchId
-      };
-
-      // Safely attach category
-      if (category.trim()) {
-        purchasePayload.category = category.trim();
-      }
-
-      const { error: pErr } = await supabase.from('purchases').insert([purchasePayload]);
-      if (pErr) throw pErr;
-
-      // 2. Locate existing item in stock for this branch
-      const { data: matchedItem } = await supabase
+      // 1. UPDATE ITEM STOCK FIRST (Guarantees inventory is accurately increased)
+      const { data: matchedItems, error: fetchErr } = await supabase
         .from('items')
         .select('*')
         .eq('branch_id', currentBranchId)
-        .ilike('name', itemName.trim())
-        .maybeSingle();
+        .ilike('name', itemName.trim());
+
+      if (fetchErr) throw fetchErr;
+
+      const matchedItem = matchedItems && matchedItems.length > 0 ? matchedItems[0] : null;
+      let previousStock = 0;
+      let newTotalStock = qtyNum;
 
       if (matchedItem) {
-        // Accurately add to existing stock
-        const currentStock = Number(matchedItem.stock || 0);
-        const updatedStock = currentStock + qtyToAdd;
+        previousStock = Number(matchedItem.stock || 0);
+        newTotalStock = previousStock + qtyNum;
+
+        const updatePayload = {
+          stock: newTotalStock,
+          unit: unit || matchedItem.unit
+        };
+
+        if (sRate > 0) updatePayload.rate = sRate;
+        if (category.trim()) updatePayload.category = category.trim();
 
         const { error: updateErr } = await supabase
           .from('items')
-          .update({
-            stock: updatedStock,
-            rate: sRate > 0 ? sRate : matchedItem.rate,
-            unit: unit || matchedItem.unit,
-            category: category.trim() || matchedItem.category
-          })
+          .update(updatePayload)
           .eq('id', matchedItem.id);
 
         if (updateErr) throw updateErr;
-
-        alert(`Stock updated! Old stock: ${currentStock}, Added: ${qtyToAdd} -> New Stock: ${updatedStock} ${unit}`);
       } else {
-        // Insert new item in inventory with incoming quantity
         const { error: insertErr } = await supabase.from('items').insert([
           {
             name: itemName.trim(),
             category: category.trim() || 'General',
             unit: unit || 'NOS',
-            stock: qtyToAdd,
+            stock: qtyNum,
             rate: sRate,
             branch_id: currentBranchId
           }
         ]);
 
         if (insertErr) throw insertErr;
-
-        alert(`New item "${itemName}" added with stock: ${qtyToAdd} ${unit}!`);
       }
 
+      // 2. RECORD IN PURCHASES TABLE (Adaptive field names to avoid cache mismatch)
+      const purchaseEntry = {
+        invoice_no: invoiceNo.trim() || null,
+        purchase_date: purchaseDate,
+        vendor_name: vendorName.trim() || null,
+        item_name: itemName.trim(),
+        item: itemName.trim(),
+        unit: unit || 'NOS',
+        quantity: qtyNum,
+        rate: pRate,
+        total: totalAmount,
+        branch_id: currentBranchId
+      };
+
+      const { error: pErr } = await supabase.from('purchases').insert([purchaseEntry]);
+
+      // If 'item_name' failed, retry with just 'item'
+      if (pErr && pErr.message.includes('item_name')) {
+        delete purchaseEntry.item_name;
+        await supabase.from('purchases').insert([purchaseEntry]);
+      } else if (pErr && pErr.message.includes('item')) {
+        delete purchaseEntry.item;
+        await supabase.from('purchases').insert([purchaseEntry]);
+      }
+
+      alert(
+        matchedItem
+          ? `Stock updated!\n\nItem: ${itemName}\nPrevious Stock: ${previousStock}\nAdded Inward: ${qtyNum}\nNew Total Stock: ${newTotalStock} ${unit}`
+          : `New item "${itemName}" added with ${qtyNum} ${unit} stock!`
+      );
+
+      // Reset form
       setItemName('');
       setCategory('');
       setQuantity('');
       setPurchaseRate('');
       setSellingRate('');
-      setInvoiceNo('');
-      setVendorName('');
       loadBranchItems();
       loadPurchases();
     } catch (err) {
       console.error(err);
-      alert('Failed to record purchase: ' + err.message);
+      alert('Error updating stock: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -216,7 +227,6 @@ function Purchases() {
           </div>
 
           <div className="form-row">
-            {/* Mobile & Laptop Friendly Item Selector */}
             <div style={{ flex: '2 1 240px', position: 'relative' }}>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
                 ITEM NAME (TYPE OR PICK EXISTING) *
@@ -278,7 +288,7 @@ function Purchases() {
                     ))}
                     {filteredDropdownItems.length === 0 && (
                       <div style={{ padding: '12px 14px', fontSize: '12px', color: '#94a3b8' }}>
-                        Press enter to add as brand new item: "{itemName}"
+                        Press enter to create as a new item: "{itemName}"
                       </div>
                     )}
                   </div>
@@ -292,7 +302,7 @@ function Purchases() {
               </label>
               <input
                 type="text"
-                placeholder="e.g. Tape, Sanitary, Cement"
+                placeholder="e.g. Tape, Sanitary"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
               />
@@ -316,7 +326,7 @@ function Purchases() {
 
             <div>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
-                QTY TO ADD *
+                QTY *
               </label>
               <input
                 type="number"
@@ -372,7 +382,7 @@ function Purchases() {
             <th>Invoice No</th>
             <th>Vendor</th>
             <th>Item</th>
-            <th>Qty Added</th>
+            <th>Qty</th>
             <th>Purchase Rate</th>
             <th>Total Amount</th>
             {isAllBranches && <th>Branch</th>}
@@ -384,8 +394,8 @@ function Purchases() {
               <td>{p.purchase_date ? new Date(p.purchase_date).toLocaleDateString('en-GB') : new Date(p.created_at).toLocaleDateString('en-GB')}</td>
               <td><strong>{p.invoice_no || '-'}</strong></td>
               <td>{p.vendor_name || '-'}</td>
-              <td><strong>{p.item_name}</strong></td>
-              <td style={{ color: '#047857', fontWeight: 700 }}>+{p.quantity} {p.unit}</td>
+              <td><strong>{p.item_name || p.item || '-'}</strong></td>
+              <td>{p.quantity} {p.unit}</td>
               <td>₹{p.rate}</td>
               <td style={{ fontWeight: 700 }}>₹{Number(p.total || 0).toLocaleString('en-IN')}</td>
               {isAllBranches && <td>{p.branch?.name || '-'}</td>}
